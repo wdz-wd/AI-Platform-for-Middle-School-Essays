@@ -1,6 +1,5 @@
 import {
   BookOpenText,
-  Files,
   FolderArchive,
   LayoutDashboard,
   School,
@@ -26,8 +25,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-transparent">
-      <div className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="rounded-[28px] border border-stone-200 bg-white/90 p-6 shadow-panel backdrop-blur">
+      <div className="min-h-screen lg:pl-[304px]">
+        <aside className="border-stone-200 bg-white/95 p-6 shadow-panel backdrop-blur lg:fixed lg:left-0 lg:top-0 lg:z-30 lg:h-screen lg:w-[280px] lg:border-r">
           <div className="mb-8">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
@@ -70,18 +69,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             ))}
           </nav>
 
-          <div className="mt-8 rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-4">
-            <div className="flex items-start gap-3">
-              <Files className="mt-1 size-4 text-accent" />
-              <div>
-                <p className="text-sm font-semibold text-ink">当前实现策略</p>
-                <p className="mt-1 text-xs leading-6 text-stone-500">
-                  PDF 自动提文本，图片与扫描 PDF 由教师补录文本后再触发批改。
-                </p>
-              </div>
-            </div>
-          </div>
-
           <Button
             className="mt-8 w-full"
             variant="secondary"
@@ -94,9 +81,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Button>
         </aside>
 
-        <main className="rounded-[28px] border border-stone-200 bg-white/80 p-6 shadow-panel backdrop-blur">
-          {children}
-        </main>
+        <div className="p-4">
+          <main className="mx-auto min-h-[calc(100vh-2rem)] max-w-[1600px] rounded-[28px] border border-stone-200 bg-white/80 p-6 shadow-panel backdrop-blur">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   )

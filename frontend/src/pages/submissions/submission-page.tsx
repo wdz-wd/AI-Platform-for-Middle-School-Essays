@@ -16,6 +16,7 @@ export function SubmissionPage() {
   const [text, setText] = useState('')
   const [studentId, setStudentId] = useState('')
   const [finalComment, setFinalComment] = useState('')
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const lastSyncedTextRef = useRef('')
   const [statusFeedback, setStatusFeedback] = useState<{
     tone: 'success' | 'error' | 'info'
@@ -263,11 +264,20 @@ export function SubmissionPage() {
               title="作文预览"
             />
           ) : (
-            <img
-              alt="作文原稿"
-              className="w-full rounded-2xl border border-stone-200 object-contain"
-              src={assetUrl(previewFile?.publicUrl ?? '')}
-            />
+            <button
+              className="block w-full cursor-zoom-in rounded-2xl border border-stone-200 bg-stone-50 p-2 text-left"
+              type="button"
+              onClick={() => setIsPreviewOpen(true)}
+            >
+              <img
+                alt="作文原稿"
+                className="max-h-[700px] w-full rounded-xl object-contain"
+                src={assetUrl(previewFile?.publicUrl ?? '')}
+              />
+              <span className="mt-2 block text-center text-xs text-stone-500">
+                点击图片放大查看
+              </span>
+            </button>
           )}
         </Card>
 
@@ -395,6 +405,27 @@ export function SubmissionPage() {
           </div>
         </Card>
       </div>
+
+      {isPreviewOpen && previewFile && previewFile.fileType !== 'PDF' ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setIsPreviewOpen(false)}
+        >
+          <div className="absolute right-5 top-5 flex gap-3">
+            <Button variant="secondary" onClick={() => setIsPreviewOpen(false)}>
+              关闭
+            </Button>
+          </div>
+          <img
+            alt="作文原稿放大预览"
+            className="max-h-[92vh] max-w-[96vw] rounded-2xl bg-white object-contain shadow-2xl"
+            src={assetUrl(previewFile.publicUrl)}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
