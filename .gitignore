@@ -1,0 +1,13 @@
+frontend/node_modules
+frontend/dist
+backend/node_modules
+backend/dist
+backend/coverage
+backend/.env
+backend/作文管理平台key.txt
+.env
+.env.local
+.env.*.local
+public/
+uploads/*
+!uploads/.gitkeep
