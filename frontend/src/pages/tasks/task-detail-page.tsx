@@ -169,10 +169,7 @@ export function TaskDetailPage() {
               value={submissionFiles}
               onChange={setSubmissionFiles}
             />
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm text-stone-500">
-                当前策略：文本型 PDF 优先直提文本；图片和扫描版 PDF 会先自动走百度 OCR，识别失败时再由教师补录正文。
-              </p>
+            <div className="flex justify-end">
               <Button
                 disabled={submissionsMutation.isPending || !submissionFiles?.length}
                 onClick={() => submissionsMutation.mutate()}
