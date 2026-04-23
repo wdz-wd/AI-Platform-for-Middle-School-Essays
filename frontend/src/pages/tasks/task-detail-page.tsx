@@ -5,7 +5,7 @@ import { apiFetch, uploadFetch } from '../../api/client'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
-import { Input } from '../../components/ui/input'
+import { FilePicker } from '../../components/ui/file-picker'
 import { formatDate } from '../../lib/utils'
 import type { TaskDetail } from '../../types/api'
 
@@ -114,10 +114,12 @@ export function TaskDetailPage() {
             <p className="text-sm leading-7 text-stone-500">
               如果新建任务时已经填写完整题面，这里可以不传。上传附件主要用于留存原题文件，必要时辅助重新生成题目讲解。
             </p>
-            <Input
+            <FilePicker
               accept=".jpg,.jpeg,.png,.pdf"
-              type="file"
-              onChange={(event) => setTopicFile(event.target.files?.[0] ?? null)}
+              hint="可上传题面截图或 PDF，非必填"
+              label="上传题面附件"
+              value={topicFile}
+              onChange={(files) => setTopicFile(files?.[0] ?? null)}
             />
             <Button
               disabled={topicMutation.isPending || !topicFile}
@@ -159,11 +161,13 @@ export function TaskDetailPage() {
         <div className="space-y-6">
           <Card className="space-y-4">
             <h2 className="text-lg font-bold text-ink">批量上传学生作文</h2>
-            <Input
+            <FilePicker
               accept=".jpg,.jpeg,.png,.pdf"
+              hint="可一次选择多篇作文图片或 PDF"
+              label="选择学生作文文件"
               multiple
-              type="file"
-              onChange={(event) => setSubmissionFiles(event.target.files)}
+              value={submissionFiles}
+              onChange={setSubmissionFiles}
             />
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-stone-500">
