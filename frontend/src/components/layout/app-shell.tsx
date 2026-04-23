@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
-  const sidebarWidth = collapsed ? 76 : 232
+  const sidebarWidth = collapsed ? 76 : 252
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -38,14 +38,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         <aside
           className={cn(
             'border-stone-200 bg-white/95 p-4 shadow-panel backdrop-blur transition-[width] duration-300 lg:fixed lg:left-0 lg:top-0 lg:z-30 lg:flex lg:h-screen lg:flex-col lg:border-r',
-            collapsed ? 'lg:w-[76px]' : 'lg:w-[232px]',
+            collapsed ? 'lg:w-[76px]' : 'lg:w-[252px]',
           )}
         >
           <div className="mb-8">
             <div
               className={cn(
                 'flex items-center',
-                collapsed ? 'justify-center' : 'justify-between gap-3',
+                collapsed ? 'justify-center' : 'gap-3',
               )}
             >
               <div
@@ -65,28 +65,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <p className="text-xs uppercase tracking-[0.35em] text-stone-400">
                       Essay MVP
                     </p>
-                    <h1 className="text-xl font-bold text-ink">作文批改平台</h1>
+                    <h1 className="whitespace-nowrap text-xl font-bold text-ink">
+                      作文批改平台
+                    </h1>
                   </div>
                 ) : null}
               </div>
-              <button
-                className={cn(
-                  'rounded-xl p-2 text-stone-500 transition hover:bg-stone-100 hover:text-ink',
-                  collapsed && 'mt-4',
-                )}
-                title={collapsed ? '展开侧边栏' : '收起侧边栏'}
-                type="button"
-                onClick={() => {
-                  setCollapsed((current) => !current)
-                  setAccountOpen(false)
-                }}
-              >
-                {collapsed ? (
-                  <ChevronsRight className="size-4" />
-                ) : (
-                  <ChevronsLeft className="size-4" />
-                )}
-              </button>
             </div>
           </div>
 
@@ -115,6 +99,26 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="relative mt-8 lg:mt-auto">
+            <button
+              className={cn(
+                'rounded-xl p-2 text-stone-500 transition hover:bg-stone-100 hover:text-ink',
+                collapsed
+                  ? 'mx-auto mb-3 flex items-center justify-center'
+                  : 'absolute right-2 top-1/2 z-10 -translate-y-1/2',
+              )}
+              title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+              type="button"
+              onClick={() => {
+                setCollapsed((current) => !current)
+                setAccountOpen(false)
+              }}
+            >
+              {collapsed ? (
+                <ChevronsRight className="size-4" />
+              ) : (
+                <ChevronsLeft className="size-4" />
+              )}
+            </button>
             {accountOpen ? (
               <div
                 className={cn(
@@ -138,7 +142,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               className={cn(
                 'flex w-full items-center rounded-2xl bg-stone-50 text-left transition hover:bg-stone-100',
-                collapsed ? 'justify-center p-3' : 'gap-3 p-3',
+                collapsed ? 'justify-center p-3' : 'gap-3 py-3 pl-3 pr-11',
               )}
               title={`${user?.displayName ?? '未登录'}，点击退出登录`}
               type="button"
