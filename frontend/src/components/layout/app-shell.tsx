@@ -62,9 +62,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
                 {!collapsed ? (
                   <div>
-                    <p className="text-xs uppercase tracking-[0.35em] text-stone-400">
-                      Essay MVP
-                    </p>
                     <h1 className="whitespace-nowrap text-xl font-bold text-ink">
                       作文批改平台
                     </h1>
