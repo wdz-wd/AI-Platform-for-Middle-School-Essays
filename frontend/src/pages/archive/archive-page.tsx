@@ -2,11 +2,25 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiFetch } from '../../api/client'
+import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import { formatDate } from '../../lib/utils'
 import type { ArchiveItem, ClassItem, StudentItem } from '../../types/api'
+
+function submissionTone(status: ArchiveItem['status']) {
+  if (status === 'AI_DONE' || status === 'REVIEWED') return 'success'
+  if (status === 'FAILED') return 'danger'
+  if (
+    status === 'TEXT_PENDING_CORRECTION' ||
+    status === 'AI_PROCESSING' ||
+    status === 'TEXT_EXTRACTING'
+  ) {
+    return 'warning'
+  }
+  return 'neutral'
+}
 
 export function ArchivePage() {
   const [filters, setFilters] = useState({
@@ -110,7 +124,9 @@ export function ArchivePage() {
                     {item.student?.name ?? item.detectedName ?? '未绑定'}
                   </td>
                   <td className="px-5 py-4 text-stone-600">{item.task.title}</td>
-                  <td className="px-5 py-4 text-stone-600">{item.status}</td>
+                  <td className="px-5 py-4">
+                    <Badge tone={submissionTone(item.status)}>{item.status}</Badge>
+                  </td>
                   <td className="max-w-sm px-5 py-4 text-stone-600">
                     {item.review?.finalComment ?? item.review?.aiSummary ?? '-'}
                   </td>
