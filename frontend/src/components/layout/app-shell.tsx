@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 )}
               >
                 <div
-                  className="rounded-2xl bg-blue-50 p-3 text-accent"
+                  className="rounded-xl bg-blue-50 p-3 text-accent"
                   title="作文智批平台"
                 >
                   <BookOpenText className="size-6" />
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 title={item.label}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center rounded-2xl text-sm font-medium transition',
+                    'flex items-center rounded-xl text-sm font-medium transition',
                     collapsed
                       ? 'justify-center px-0 py-3'
                       : 'gap-3 px-4 py-3',
@@ -119,7 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {accountOpen ? (
               <div
                 className={cn(
-                  'absolute bottom-full mb-3 rounded-2xl border border-stone-200 bg-white p-2 shadow-panel',
+                  'absolute bottom-full mb-3 rounded-xl border border-stone-200 bg-white p-2 shadow-panel',
                   collapsed ? 'left-0 w-40' : 'left-0 right-0',
                 )}
               >
@@ -138,7 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             ) : null}
             <button
               className={cn(
-                'flex w-full items-center rounded-2xl bg-stone-50 text-left transition hover:bg-stone-100',
+                'flex w-full items-center rounded-xl bg-stone-50 text-left transition hover:bg-stone-100',
                 collapsed ? 'justify-center p-3' : 'gap-3 py-3 pl-3 pr-11',
               )}
               title={`${user?.displayName ?? '未登录'}，点击退出登录`}

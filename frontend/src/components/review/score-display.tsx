@@ -86,7 +86,7 @@ export function ReviewScorePill({
   return (
     <div
       className={cn(
-        'inline-flex items-center rounded-2xl border px-4 py-3',
+        'inline-flex items-center rounded-xl border px-4 py-3',
         scoreSurface(score),
         compact && 'px-3 py-2',
         className,
@@ -154,10 +154,10 @@ export function ReviewScorePanel({
   ]
 
   return (
-    <section className={cn(!embedded && 'rounded-2xl border border-stone-200 bg-white p-5', className)}>
+    <section className={cn(!embedded && 'rounded-xl border border-stone-200 bg-white p-5', className)}>
       <h3 className="text-lg font-bold text-ink">AI 评分总览</h3>
       <div className="mt-5 grid gap-5 lg:grid-cols-[220px_260px] lg:justify-between">
-        <div className="flex items-center justify-center rounded-2xl border border-stone-100 bg-stone-50 p-5">
+        <div className="flex items-center justify-center rounded-xl border border-stone-100 bg-stone-50 p-5">
           <div
             className="flex w-[136px] items-center justify-center rounded-full p-3"
             style={ringSurface(score)}
@@ -170,7 +170,7 @@ export function ReviewScorePanel({
             </div>
           </div>
         </div>
-        <div className="rounded-2xl border border-stone-100 bg-stone-50 p-4">
+        <div className="rounded-xl border border-stone-100 bg-stone-50 p-4">
           <div className="flex items-center justify-center">
             <ChartContainer className="h-[220px] w-full max-w-[240px]" config={chartConfig}>
               <ResponsiveContainer width="100%" height="100%">
@@ -223,7 +223,7 @@ export function ReviewDimensionCards({
   return (
     <section
       className={cn(
-        'rounded-2xl border border-stone-200 bg-white p-5',
+        'rounded-xl border border-stone-200 bg-white p-5',
         className,
       )}
     >
@@ -235,7 +235,7 @@ export function ReviewDimensionCards({
           return (
             <div
               key={item.key}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-stone-100 bg-stone-50 px-4 py-3"
+              className="flex items-center justify-between gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <span

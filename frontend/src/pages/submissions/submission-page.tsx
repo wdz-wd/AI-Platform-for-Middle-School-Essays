@@ -370,7 +370,7 @@ export function SubmissionPage() {
             </Badge>
             {feedback ? (
               <div
-                className={`rounded-2xl border px-4 py-2.5 text-sm ${feedbackClass(feedback.tone)}`}
+                className={`rounded-xl border px-4 py-2.5 text-sm ${feedbackClass(feedback.tone)}`}
               >
                 {feedback.message}
               </div>
@@ -441,7 +441,7 @@ export function SubmissionPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr_1fr]">
-        <Card className="overflow-hidden rounded-2xl p-0">
+        <Card className="overflow-hidden rounded-xl p-0">
           <div className="border-b border-stone-100 px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -480,7 +480,7 @@ export function SubmissionPage() {
           <div className="p-5">
             {sourceTab === 'image' ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-2xl bg-stone-50 px-4 py-3 text-sm text-stone-500">
+                <div className="flex items-center justify-between rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-500">
                   <div className="font-semibold text-ink">
                     {previewFiles.length ? `${currentPageIndex + 1} / ${previewFiles.length}` : '0 / 0'}
                   </div>
@@ -508,7 +508,7 @@ export function SubmissionPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3">
+                <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                   {previewFile?.fileType === 'PDF' ? (
                     <iframe
                       className="h-[700px] w-full rounded-xl bg-white"
@@ -539,7 +539,7 @@ export function SubmissionPage() {
                     {previewFiles.map((file, index) => (
                       <button
                         key={file.id}
-                        className={`min-w-[84px] rounded-2xl border p-2 text-center transition ${
+                        className={`min-w-[84px] rounded-xl border p-2 text-center transition ${
                           index === currentPageIndex
                             ? 'border-accent bg-blue-50'
                             : 'border-stone-200 bg-white'
@@ -558,7 +558,7 @@ export function SubmissionPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8">
+                <div className="rounded-xl border border-stone-200 bg-white px-8 py-8">
                   <div className="mx-auto max-w-3xl">
                     <h3 className="text-center text-2xl font-bold tracking-wide text-ink">
                       {previewTextTitle}
@@ -579,7 +579,7 @@ export function SubmissionPage() {
                   </div>
                 </div>
                 <Textarea
-                  className="min-h-[240px] rounded-2xl border-stone-200"
+                  className="min-h-[240px] rounded-xl border-stone-200"
                   placeholder="如果识别结果不完整或失败，可在这里补录或修正文稿。"
                   value={text}
                   onChange={(event) => setText(event.target.value)}
@@ -612,7 +612,7 @@ export function SubmissionPage() {
         </Card>
 
         <div className="space-y-6">
-          <Card className="rounded-2xl p-4">
+          <Card className="rounded-xl p-4">
             <ReviewScorePanel embedded score={score} />
             <div className="mt-5 border-t border-stone-100 pt-5">
               <h3 className="flex items-center gap-2 text-base font-bold text-ink">
@@ -625,7 +625,7 @@ export function SubmissionPage() {
             </div>
           </Card>
           <ReviewDimensionCards comments={dimensionComments} score={score} />
-          <Card className="rounded-2xl p-4">
+          <Card className="rounded-xl p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-sm text-stone-500">字数统计</p>
@@ -649,7 +649,7 @@ export function SubmissionPage() {
         </div>
 
         <div className="space-y-6">
-          <Card className="rounded-2xl">
+          <Card className="rounded-xl">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-lg font-bold text-ink">AI 智能评语</h3>
               <Button
@@ -661,7 +661,7 @@ export function SubmissionPage() {
               </Button>
             </div>
             <div className="mt-5 space-y-4">
-              <section className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+              <section className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
                 <p className="flex items-center gap-2 text-base font-bold text-emerald-700">
                   <Sparkles className="size-4" />
                   亮点概述
@@ -670,7 +670,7 @@ export function SubmissionPage() {
                   {submissionQuery.data?.review?.aiStrengths ?? '尚未生成'}
                 </p>
               </section>
-              <section className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+              <section className="rounded-xl border border-amber-100 bg-amber-50/60 p-4">
                 <p className="flex items-center gap-2 text-base font-bold text-amber-700">
                   <MessageCircleWarning className="size-4" />
                   存在问题
@@ -679,7 +679,7 @@ export function SubmissionPage() {
                   {submissionQuery.data?.review?.aiIssues ?? '尚未生成'}
                 </p>
               </section>
-              <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+              <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
                 <p className="flex items-center gap-2 text-base font-bold text-accent">
                   <Lightbulb className="size-4" />
                   修改建议
@@ -691,10 +691,10 @@ export function SubmissionPage() {
             </div>
           </Card>
 
-          <Card className="rounded-2xl p-4">
+          <Card className="rounded-xl p-4">
             <h3 className="text-lg font-bold text-ink">教师评语</h3>
             <Textarea
-              className="mt-4 min-h-[100px] rounded-2xl border-stone-200"
+              className="mt-4 min-h-[100px] rounded-xl border-stone-200"
               placeholder="请输入教师评语（最多 500 字）"
               value={finalComment}
               onChange={(event) => setFinalComment(event.target.value)}
@@ -736,7 +736,7 @@ export function SubmissionPage() {
         >
           <img
             alt="作文原稿放大预览"
-            className="max-h-[92vh] max-w-[96vw] rounded-2xl bg-white object-contain shadow-2xl"
+            className="max-h-[92vh] max-w-[96vw] rounded-xl bg-white object-contain shadow-2xl"
             src={assetUrl(previewFile.publicUrl)}
             onClick={(event) => event.stopPropagation()}
           />

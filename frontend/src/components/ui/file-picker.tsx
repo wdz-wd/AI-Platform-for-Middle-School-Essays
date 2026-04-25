@@ -34,12 +34,12 @@ export function FilePicker({
       />
       <label
         className={cn(
-          'group flex cursor-pointer items-center gap-4 rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-4 transition',
+          'group flex cursor-pointer items-center gap-4 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-4 transition',
           'hover:border-accent hover:bg-teal-50/60',
         )}
         htmlFor={inputId}
       >
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white text-accent shadow-sm transition group-hover:scale-105">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-accent shadow-sm transition group-hover:scale-105">
           <UploadCloud className="size-5" />
         </span>
         <span className="min-w-0 flex-1">

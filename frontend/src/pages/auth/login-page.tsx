@@ -96,7 +96,7 @@ export function LoginPage() {
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1580px] flex-col px-8 py-8 lg:px-14 lg:py-10 xl:px-20">
         <div className="flex items-center gap-3 text-ink">
-          <div className="rounded-2xl bg-white/90 p-3 text-accent shadow-[0_10px_30px_rgba(37,99,235,0.12)]">
+          <div className="rounded-xl bg-white/90 p-3 text-accent shadow-[0_10px_30px_rgba(37,99,235,0.12)]">
             <BookOpenText className="size-6" />
           </div>
           <div>
@@ -122,13 +122,13 @@ export function LoginPage() {
             </div>
 
             <div className="relative mt-8 max-w-[760px]">
-              <div className="pointer-events-none absolute left-[4%] top-[16%] rounded-2xl bg-white/82 px-4 py-2 text-sm font-semibold text-accent shadow-[0_12px_30px_rgba(37,99,235,0.12)]">
+              <div className="pointer-events-none absolute left-[4%] top-[16%] rounded-xl bg-white/82 px-4 py-2 text-sm font-semibold text-accent shadow-[0_12px_30px_rgba(37,99,235,0.12)]">
                 精准评价
               </div>
-              <div className="pointer-events-none absolute right-[15%] top-[8%] rounded-2xl bg-white/82 px-4 py-2 text-sm font-semibold text-accent shadow-[0_12px_30px_rgba(37,99,235,0.12)]">
+              <div className="pointer-events-none absolute right-[15%] top-[8%] rounded-xl bg-white/82 px-4 py-2 text-sm font-semibold text-accent shadow-[0_12px_30px_rgba(37,99,235,0.12)]">
                 智能批改
               </div>
-              <div className="pointer-events-none absolute bottom-[20%] right-[11%] rounded-2xl bg-white/82 px-4 py-2 text-sm font-semibold text-accent shadow-[0_12px_30px_rgba(37,99,235,0.12)]">
+              <div className="pointer-events-none absolute bottom-[20%] right-[11%] rounded-xl bg-white/82 px-4 py-2 text-sm font-semibold text-accent shadow-[0_12px_30px_rgba(37,99,235,0.12)]">
                 学情分析
               </div>
               <img
@@ -138,14 +138,14 @@ export function LoginPage() {
               />
             </div>
 
-            <div className="mt-4 grid w-full max-w-[760px] gap-4 rounded-[28px] border border-white/70 bg-white/55 p-5 shadow-[0_24px_60px_rgba(148,163,184,0.12)] backdrop-blur-sm sm:grid-cols-4">
+            <div className="mt-4 grid w-full max-w-[760px] gap-4 rounded-xl border border-white/70 bg-white/55 p-5 shadow-[0_24px_60px_rgba(148,163,184,0.12)] backdrop-blur-sm sm:grid-cols-4">
               {features.map((item) => {
                 const Icon = item.icon
                 return (
                   <div key={item.title} className="flex items-center gap-4 sm:flex-col sm:items-start sm:gap-3">
                     <span
                       className={[
-                        'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-[0_14px_28px_rgba(37,99,235,0.18)]',
+                        'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white shadow-[0_14px_28px_rgba(37,99,235,0.18)]',
                         item.tone === 'blue' && 'bg-gradient-to-br from-[#4f8dff] to-[#2563eb]',
                         item.tone === 'teal' && 'bg-gradient-to-br from-[#34d4c3] to-[#14b8a6]',
                         item.tone === 'violet' && 'bg-gradient-to-br from-[#7c6cff] to-[#6366f1]',
@@ -165,7 +165,7 @@ export function LoginPage() {
           </section>
 
           <section className="flex items-center justify-center lg:justify-end">
-            <div className="w-full max-w-[560px] rounded-[34px] border border-white/75 bg-white/88 p-8 shadow-[0_30px_80px_rgba(148,163,184,0.18)] backdrop-blur-md lg:p-10">
+            <div className="w-full max-w-[560px] rounded-xl border border-white/75 bg-white/88 p-8 shadow-[0_30px_80px_rgba(148,163,184,0.18)] backdrop-blur-md lg:p-10">
               <div className="text-center">
                 <h2 className="text-[44px] font-black tracking-tight text-[#1a2f63]">
                   教师登录
@@ -181,7 +181,7 @@ export function LoginPage() {
                   <div className="relative">
                     <UserRound className="pointer-events-none absolute left-5 top-1/2 size-5 -translate-y-1/2 text-[#6c7fa4]" />
                     <Input
-                      className="h-14 rounded-2xl border-[#d8e3f6] bg-white pl-14 pr-4 text-base shadow-none placeholder:text-[#9aa9c7] focus:border-[#8bb2ff] focus:ring-[#dbeafe]"
+                      className="h-14 rounded-xl border-[#d8e3f6] bg-white pl-14 pr-4 text-base shadow-none placeholder:text-[#9aa9c7] focus:border-[#8bb2ff] focus:ring-[#dbeafe]"
                       placeholder="请输入手机号/账号"
                       {...form.register('username')}
                     />
@@ -195,7 +195,7 @@ export function LoginPage() {
                   <div className="relative">
                     <LockKeyhole className="pointer-events-none absolute left-5 top-1/2 size-5 -translate-y-1/2 text-[#6c7fa4]" />
                     <Input
-                      className="h-14 rounded-2xl border-[#d8e3f6] bg-white pl-14 pr-14 text-base shadow-none placeholder:text-[#9aa9c7] focus:border-[#8bb2ff] focus:ring-[#dbeafe]"
+                      className="h-14 rounded-xl border-[#d8e3f6] bg-white pl-14 pr-14 text-base shadow-none placeholder:text-[#9aa9c7] focus:border-[#8bb2ff] focus:ring-[#dbeafe]"
                       placeholder="请输入密码"
                       type={showPassword ? 'text' : 'password'}
                       {...form.register('password')}
@@ -236,7 +236,7 @@ export function LoginPage() {
                 </div>
 
                 <Button
-                  className="h-14 w-full rounded-2xl text-xl font-bold shadow-[0_14px_34px_rgba(37,99,235,0.28)]"
+                  className="h-14 w-full rounded-xl text-xl font-bold shadow-[0_14px_34px_rgba(37,99,235,0.28)]"
                   disabled={mutation.isPending}
                 >
                   {mutation.isPending ? '登录中...' : '登录'}
@@ -269,7 +269,7 @@ export function LoginPage() {
                 </div>
               </div>
 
-              <div className="mt-10 rounded-[24px] border border-[#eef3fb] bg-[#f8fbff] px-5 py-4">
+              <div className="mt-10 rounded-xl border border-[#eef3fb] bg-[#f8fbff] px-5 py-4">
                 <p className="text-sm font-semibold text-[#1f3360]">开发环境默认账号</p>
                 <div className="mt-2 space-y-1.5 text-sm text-[#62779b]">
                   <p>admin / Admin@123456</p>

@@ -123,7 +123,7 @@ export function TaskDetailPage() {
 
       <div className="grid gap-6 xl:grid-cols-[0.92fr_1.28fr]">
         <div className="space-y-6">
-          <Card className="rounded-[24px] p-5 shadow-none">
+          <Card className="rounded-xl p-5 shadow-none">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm uppercase tracking-[0.24em] text-stone-400">
@@ -132,40 +132,40 @@ export function TaskDetailPage() {
                 <h2 className="mt-2 text-xl font-black text-ink">题目基本信息</h2>
               </div>
               {taskQuery.data?.topicFiles?.length ? (
-                <div className="rounded-2xl bg-blue-50 px-3 py-2 text-sm font-medium text-accent">
+                <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-accent">
                   附件 {taskQuery.data.topicFiles.length} 份
                 </div>
               ) : null}
             </div>
             <div className="mt-5 space-y-4">
-              <div className="rounded-2xl border border-stone-100 bg-stone-50 px-4 py-4">
+              <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
                 <p className="text-sm font-semibold text-stone-500">任务名称</p>
                 <p className="mt-2 text-base font-bold text-ink">
                   {taskQuery.data?.title ?? '--'}
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-2xl border border-stone-100 bg-stone-50 px-4 py-4">
+                <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
                   <p className="text-sm font-semibold text-stone-500">所属班级</p>
                   <p className="mt-2 text-base font-bold text-ink">
                     {taskQuery.data?.class.name ?? '--'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-stone-100 bg-stone-50 px-4 py-4">
+                <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
                   <p className="text-sm font-semibold text-stone-500">创建时间</p>
                   <p className="mt-2 text-base font-bold text-ink">
                     {taskQuery.data ? formatDate(taskQuery.data.createdAt) : '--'}
                   </p>
                 </div>
               </div>
-              <div className="rounded-2xl border border-stone-100 bg-stone-50 px-4 py-4">
+              <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
                 <p className="text-sm font-semibold text-stone-500">作文题目与材料</p>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600">
                   {taskQuery.data?.topicText ?? '暂无题面文本'}
                 </p>
               </div>
               {taskQuery.data?.note ? (
-                <div className="rounded-2xl border border-stone-100 bg-stone-50 px-4 py-4">
+                <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
                   <p className="text-sm font-semibold text-stone-500">任务备注</p>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600">
                     {taskQuery.data.note}
@@ -175,7 +175,7 @@ export function TaskDetailPage() {
             </div>
           </Card>
 
-          <Card className="rounded-[24px] p-5 shadow-none">
+          <Card className="rounded-xl p-5 shadow-none">
             <div className="flex items-center gap-3">
               <span className="h-5 w-1 rounded-full bg-accent" />
               <h2 className="text-lg font-bold text-ink">题目讲解思路</h2>
@@ -188,7 +188,7 @@ export function TaskDetailPage() {
                     <div
                       key={item.label}
                       className={cn(
-                        'flex items-start gap-3 rounded-2xl border px-4 py-4',
+                        'flex items-start gap-3 rounded-xl border px-4 py-4',
                         item.tone === 'blue' && 'border-blue-100 bg-blue-50/70',
                         item.tone === 'amber' && 'border-amber-100 bg-amber-50/80',
                         item.tone === 'violet' && 'border-violet-100 bg-violet-50/70',
@@ -225,9 +225,9 @@ export function TaskDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <Card className="rounded-[24px] p-5 shadow-none">
+          <Card className="rounded-xl p-5 shadow-none">
             <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-accent">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-accent">
                 <Upload className="size-5" />
               </span>
               <div>
@@ -257,7 +257,7 @@ export function TaskDetailPage() {
             </div>
           </Card>
 
-          <Card className="overflow-hidden rounded-[24px] p-0 shadow-none">
+          <Card className="overflow-hidden rounded-xl p-0 shadow-none">
             <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-5 py-4">
               <h2 className="text-lg font-bold text-ink">作文列表</h2>
               <span className="text-sm text-stone-500">

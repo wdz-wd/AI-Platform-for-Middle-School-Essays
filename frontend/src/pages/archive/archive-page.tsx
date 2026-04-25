@@ -376,7 +376,7 @@ export function ArchivePage() {
           return (
             <Card
               key={item.label}
-              className="rounded-[20px] border-stone-200 px-4 py-6 shadow-none"
+              className="rounded-xl border-stone-200 px-4 py-6 shadow-none"
             >
               <div className="flex items-center gap-3">
                 <span
@@ -413,7 +413,7 @@ export function ArchivePage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.75fr_0.65fr]">
         <div className="space-y-6">
-          <Card className="rounded-[24px] p-4 shadow-none">
+          <Card className="rounded-xl p-4 shadow-none">
             <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr_1fr_1fr_auto]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-stone-400" />
@@ -515,7 +515,7 @@ export function ArchivePage() {
             </div>
           </Card>
 
-          <Card className="overflow-hidden rounded-[24px] p-0 shadow-none">
+          <Card className="overflow-hidden rounded-xl p-0 shadow-none">
             {archiveQuery.isError ? (
               <div className="border-b border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
                 档案数据加载失败：{(archiveQuery.error as Error).message}
@@ -545,7 +545,7 @@ export function ArchivePage() {
                     <tr key={item.id} className="border-t border-stone-100 align-top">
                       <td className="px-5 py-4">
                         <div className="flex items-start gap-3">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-accent">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-accent">
                             <FileText className="size-5" />
                           </div>
                           <div className="min-w-0">
@@ -626,7 +626,7 @@ export function ArchivePage() {
         </div>
 
         <div className="space-y-6">
-          <Card className="rounded-[24px] p-4 shadow-none">
+          <Card className="rounded-xl p-4 shadow-none">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-bold text-ink">整体趋势</h3>
@@ -675,7 +675,7 @@ export function ArchivePage() {
             </div>
           </Card>
 
-          <Card className="rounded-[24px] p-4 shadow-none">
+          <Card className="rounded-xl p-4 shadow-none">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-bold text-ink">待处理提醒</h3>
@@ -684,14 +684,14 @@ export function ArchivePage() {
               <Clock3 className="size-5 text-amber-500" />
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-rose-50 px-4 py-4">
+              <div className="rounded-xl bg-rose-50 px-4 py-4">
                 <p className="text-sm text-stone-500">待处理作文</p>
                 <p className="mt-2 text-3xl font-black text-ink">{stats.pending + stats.aiDone}</p>
                 <p className="mt-2 text-sm text-rose-500">
                   AI已完成 {stats.aiDone}，处理中 {stats.pending}
                 </p>
               </div>
-              <div className="rounded-2xl bg-stone-50 px-4 py-4">
+              <div className="rounded-xl bg-stone-50 px-4 py-4">
                 <p className="text-sm text-stone-500">最近待处理</p>
                 <p className="mt-2 text-base font-bold text-ink">
                   {latestPending ? formatDate(latestPending.createdAt) : '--'}
@@ -703,7 +703,7 @@ export function ArchivePage() {
             </div>
           </Card>
 
-          <Card className="rounded-[24px] p-4 shadow-none">
+          <Card className="rounded-xl p-4 shadow-none">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-bold text-ink">班级平均分排行</h3>
@@ -742,7 +742,7 @@ export function ArchivePage() {
             </div>
           </Card>
 
-          <Card className="rounded-[24px] p-4 shadow-none">
+          <Card className="rounded-xl p-4 shadow-none">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-bold text-ink">分数分布</h3>
