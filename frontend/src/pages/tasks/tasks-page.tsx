@@ -4,15 +4,9 @@ import { apiFetch } from '../../api/client'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
+import { getTaskStatusMeta } from '../../lib/status'
 import { formatDate } from '../../lib/utils'
 import type { TaskItem } from '../../types/api'
-
-function taskTone(status: TaskItem['status']) {
-  if (status === 'DONE') return 'success'
-  if (status === 'FAILED') return 'danger'
-  if (status === 'PARTIAL_DONE' || status === 'PROCESSING') return 'warning'
-  return 'neutral'
-}
 
 export function TasksPage() {
   const navigate = useNavigate()
@@ -55,7 +49,9 @@ export function TasksPage() {
                   <td className="px-5 py-4 font-medium text-ink">{task.title}</td>
                   <td className="px-5 py-4 text-stone-600">{task.class.name}</td>
                   <td className="px-5 py-4">
-                    <Badge tone={taskTone(task.status)}>{task.status}</Badge>
+                    <Badge tone={getTaskStatusMeta(task.status).tone}>
+                      {getTaskStatusMeta(task.status).label}
+                    </Badge>
                   </td>
                   <td className="px-5 py-4 text-stone-600">
                     {task.doneCount}/{task.totalCount}，失败 {task.failedCount}

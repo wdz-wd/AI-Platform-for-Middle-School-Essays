@@ -6,6 +6,13 @@ type EssayReviewResult = {
   issues: string;
   suggestions: string;
   rewriteExample: string;
+  scoring: {
+    total: number;
+    content: number;
+    structure: number;
+    language: number;
+    idea: number;
+  };
 };
 
 type TopicGuidanceResult = {
@@ -61,29 +68,48 @@ ${input.topicText}`,
     topicText?: string | null;
     studentName?: string | null;
     className?: string | null;
-  essayText: string;
+    essayText: string;
   }): Promise<EssayReviewResult> {
     const content = await this.chat([
       {
         role: 'system',
         content:
-          '你是一名严谨的初中语文作文批改助手。你必须只返回一个 JSON 对象，不要输出 markdown，不要解释，不要补充任何字段。JSON 必须包含且只包含 summary、strengths、issues、suggestions、rewriteExample 五个字段，且五个字段的值都必须是字符串。',
+          '你是一名严谨的中考语文作文批改助手。你必须只返回一个 JSON 对象，不要输出 markdown，不要解释，不要补充任何字段。',
       },
       {
         role: 'user',
-        content: `请批改以下初中作文，并严格按要求返回 JSON：
+        content: `请按照真实中考语文作文阅卷习惯，对以下作文进行整体批改与评分，并严格按要求返回 JSON。
 
-字段要求：
+评分校准要求：
+1. 采用 50 分制，总分仍按“整体印象分”来定，不要按机械加减分公式评分。
+2. 对于一篇完整、基本切题、表达普通但没有明显硬伤的作文，常见分数应在 36-38 分之间，默认基准可理解为 38 分左右。
+3. 明显优秀、立意或语言较突出的作文，通常在 40-42 分；42 分以上非常少见，只有在明显出众时才使用。
+4. 明显较差、问题较多但基本写完的作文，一般在 31-35 分。
+5. 没写完、明显跑题、内容非常空泛或质量很差的作文，才给 30 分左右或低于 30 分。
+6. 当前依据 OCR 转写文本评分，无法准确判断字迹、卷面和部分标点，因此不要因为这些图像因素重扣分；若文本中存在非常明显的句子残缺或严重不通顺，可酌情降低总分。
+7. 除总分外，还要给出四个展示用子项分：内容（20分）、结构（10分）、语言（10分）、立意（10分）。这四项是为了展示解释评分，不是机械公式来源，但最终返回时四项之和必须等于总分。
+
+输出字段要求：
 1. summary：80-120字，总结作文整体完成度、中心、语言与结构情况。
 2. strengths：列出2-3个主要优点，写成一段话，不要分点符号。
 3. issues：列出2-4个最主要问题，写成一段话，不要泛泛而谈，要贴合作文内容。
 4. suggestions：必须挑选原文中2-3个最典型的句子进行修改建议，格式固定为“原句：…… 修改：…… 说明：……”，各组之间用换行分隔。
 5. rewriteExample：基于原文内容，给出一个120-180字的优化示例片段，要求贴合原题，不要脱离原文另起炉灶。
+6. scoreTotal：必须是数字，表示 0-50 的最终总分。
+7. scoreContent：必须是数字，范围 0-20。
+8. scoreStructure：必须是数字，范围 0-10。
+9. scoreLanguage：必须是数字，范围 0-10。
+10. scoreIdea：必须是数字，范围 0-10。
 
 硬性要求：
-- 五个字段都必须返回，不能为空字符串。
-- 所有字段值必须是字符串，不要返回数组，不要返回对象。
-- 不要打分，不要评级，不要出现“作为AI”等表述。
+- 所有字段都必须返回。
+- summary、strengths、issues、suggestions、rewriteExample 必须是字符串。
+- scoreTotal、scoreContent、scoreStructure、scoreLanguage、scoreIdea 都必须是数字，不要返回字符串。
+- 不要返回数组，不要返回对象嵌套，不要补充其他字段。
+- 不要出现“作为AI”等表述。
+- 分数要符合真实阅卷手感：普通完整作文不要轻易打到 32 分以下，优秀作文不要轻易超过 42 分。
+- 如果作文明显未完成，分数应显著下调。
+- 四个子项分必须加起来等于 scoreTotal，并且能合理反映内容、结构、语言、立意的强弱差异。
 
 作文任务：${input.taskTitle}
 作文题目原文：${input.topicText ?? '未提供'}
@@ -93,11 +119,21 @@ ${input.topicText}`,
 ${input.essayText}
 
 返回格式示例：
-{"summary":"...","strengths":"...","issues":"...","suggestions":"原句：... 修改：... 说明：...","rewriteExample":"..."}`,
+{"summary":"...","strengths":"...","issues":"...","suggestions":"原句：... 修改：... 说明：...","rewriteExample":"...","scoreTotal":38,"scoreContent":15,"scoreStructure":8,"scoreLanguage":7,"scoreIdea":8}
+`,
       },
     ]);
 
     const parsed = this.parseJson(content);
+    const wordCount = this.estimateWordCount(input.essayText);
+    const totalScore = this.normalizeHolisticScore(parsed.scoreTotal, wordCount);
+    const dimensionScores = this.normalizeDimensionScores(totalScore, {
+      content: parsed.scoreContent,
+      structure: parsed.scoreStructure,
+      language: parsed.scoreLanguage,
+      idea: parsed.scoreIdea,
+    });
+
     return {
       summary:
         this.pickString(parsed, ['summary', 'overall', 'comment']) ||
@@ -114,6 +150,13 @@ ${input.essayText}
       rewriteExample:
         this.pickString(parsed, ['rewriteExample', 'example', 'sampleRewrite']) ||
         '我再次看向那张旧书桌时，忽然明白，人生并不是一路平坦地向前，而是在一次次磕碰中学会站稳脚步。那些坑洼与划痕，像极了成长留下的印记。正因为经历过磨损，它才更能托住新的日子；也正因为走过曲折，我才更懂得珍惜眼前，继续把人生认真续写下去。',
+      scoring: {
+        total: totalScore,
+        content: dimensionScores.content,
+        structure: dimensionScores.structure,
+        language: dimensionScores.language,
+        idea: dimensionScores.idea,
+      },
     };
   }
 
@@ -180,6 +223,10 @@ ${input.essayText}
     return '';
   }
 
+  private asRecord(value: unknown) {
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  }
+
   private asString(value: unknown) {
     if (typeof value === 'string') {
       return value.trim();
@@ -202,5 +249,149 @@ ${input.essayText}
     }
 
     return '';
+  }
+
+  private clampInt(
+    value: unknown,
+    min: number,
+    max: number,
+    fallback = min,
+  ) {
+    const raw =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number(value)
+          : fallback;
+    if (!Number.isFinite(raw)) {
+      return fallback;
+    }
+    return Math.max(min, Math.min(max, Math.round(raw)));
+  }
+
+  private estimateWordCount(text: string) {
+    return text.replace(/\s/g, '').length;
+  }
+
+  private normalizeHolisticScore(value: unknown, wordCount: number) {
+    let score = this.clampInt(value, 0, 50, 37);
+
+    if (wordCount < 200) {
+      return Math.min(score, 18);
+    }
+    if (wordCount < 300) {
+      return Math.min(score, 24);
+    }
+    if (wordCount < 400) {
+      return Math.min(score, 30);
+    }
+
+    if (wordCount >= 500 && score < 31) {
+      score = 31;
+    }
+    if (wordCount >= 550 && score < 33) {
+      score = 33;
+    }
+
+    return Math.min(score, 42);
+  }
+
+  private normalizeDimensionScores(
+    total: number,
+    raw: {
+      content: unknown;
+      structure: unknown;
+      language: unknown;
+      idea: unknown;
+    },
+  ) {
+    const maxMap = {
+      content: 20,
+      structure: 10,
+      language: 10,
+      idea: 10,
+    } as const;
+
+    const fallback = this.deriveDimensionFallback(total);
+    const draft = {
+      content: this.clampInt(raw.content, 0, maxMap.content, fallback.content),
+      structure: this.clampInt(
+        raw.structure,
+        0,
+        maxMap.structure,
+        fallback.structure,
+      ),
+      language: this.clampInt(
+        raw.language,
+        0,
+        maxMap.language,
+        fallback.language,
+      ),
+      idea: this.clampInt(raw.idea, 0, maxMap.idea, fallback.idea),
+    };
+
+    let current =
+      draft.content + draft.structure + draft.language + draft.idea;
+
+    if (current < total) {
+      let gap = total - current;
+      const keys: Array<keyof typeof draft> = [
+        'content',
+        'idea',
+        'language',
+        'structure',
+      ];
+      while (gap > 0) {
+        let moved = false;
+        for (const key of keys) {
+          if (draft[key] < maxMap[key]) {
+            draft[key] += 1;
+            gap -= 1;
+            moved = true;
+            if (gap === 0) break;
+          }
+        }
+        if (!moved) break;
+      }
+    } else if (current > total) {
+      let overflow = current - total;
+      const keys: Array<keyof typeof draft> = [
+        'content',
+        'language',
+        'structure',
+        'idea',
+      ];
+      while (overflow > 0) {
+        let moved = false;
+        for (const key of keys) {
+          if (draft[key] > 0) {
+            draft[key] -= 1;
+            overflow -= 1;
+            moved = true;
+            if (overflow === 0) break;
+          }
+        }
+        if (!moved) break;
+      }
+    }
+
+    current = draft.content + draft.structure + draft.language + draft.idea;
+    if (current !== total) {
+      draft.content = Math.max(
+        0,
+        Math.min(maxMap.content, draft.content + (total - current)),
+      );
+    }
+
+    return draft;
+  }
+
+  private deriveDimensionFallback(total: number) {
+    const content = Math.max(0, Math.min(20, Math.round(total * 0.4)));
+    const structure = Math.max(0, Math.min(10, Math.round(total * 0.2)));
+    const language = Math.max(0, Math.min(10, Math.round(total * 0.2)));
+    const idea = Math.max(0, Math.min(10, total - content - structure - language));
+
+    return { content, structure, language, idea };
   }
 }

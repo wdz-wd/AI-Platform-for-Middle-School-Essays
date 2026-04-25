@@ -7,10 +7,7 @@
     'Source Han Sans SC', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei',
     sans-serif;
   color: #1f2937;
-  background:
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.16), transparent 30%),
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.14), transparent 28%),
-    #fbfaf6;
+  background: #f4f7fb;
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -23,6 +20,9 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.07), transparent 24%),
+    linear-gradient(180deg, #f7f9fc 0%, #f4f7fb 100%);
 }
 
 #root {

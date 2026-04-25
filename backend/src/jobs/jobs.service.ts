@@ -246,6 +246,11 @@ export class JobsService implements OnModuleInit {
           aiIssues: review.issues,
           aiSuggestions: review.suggestions,
           aiRewriteExample: review.rewriteExample,
+          scoreTotal: review.scoring.total,
+          scoreContent: review.scoring.content,
+          scoreStructure: review.scoring.structure,
+          scoreLanguage: review.scoring.language,
+          scoreIdea: review.scoring.idea,
           printableSnapshot: review as unknown as object,
         },
         update: {
@@ -254,6 +259,11 @@ export class JobsService implements OnModuleInit {
           aiIssues: review.issues,
           aiSuggestions: review.suggestions,
           aiRewriteExample: review.rewriteExample,
+          scoreTotal: review.scoring.total,
+          scoreContent: review.scoring.content,
+          scoreStructure: review.scoring.structure,
+          scoreLanguage: review.scoring.language,
+          scoreIdea: review.scoring.idea,
           printableSnapshot: review as unknown as object,
         },
       });

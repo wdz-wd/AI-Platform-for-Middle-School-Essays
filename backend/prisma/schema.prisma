@@ -160,6 +160,11 @@ model Review {
   aiIssues         String?
   aiSuggestions    String?
   aiRewriteExample String?
+  scoreTotal       Int?
+  scoreContent     Int?
+  scoreStructure   Int?
+  scoreLanguage    Int?
+  scoreIdea        Int?
   teacherComment   String?
   finalComment     String?
   printableSnapshot Json?

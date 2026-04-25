@@ -61,6 +61,14 @@ export type TopicGuidance = {
   classroomTips: string
 }
 
+export type ReviewScore = {
+  total?: number | null
+  content?: number | null
+  structure?: number | null
+  language?: number | null
+  idea?: number | null
+}
+
 export type TaskItem = {
   id: string
   title: string
@@ -113,6 +121,11 @@ export type TaskDetail = TaskItem & {
       aiIssues?: string | null
       aiSuggestions?: string | null
       aiRewriteExample?: string | null
+      scoreTotal?: number | null
+      scoreContent?: number | null
+      scoreStructure?: number | null
+      scoreLanguage?: number | null
+      scoreIdea?: number | null
       finalComment?: string | null
     } | null
   }>
@@ -120,6 +133,7 @@ export type TaskDetail = TaskItem & {
 
 export type SubmissionDetail = {
   id: string
+  createdAt?: string
   detectedName?: string | null
   status: SubmissionStatus
   student?: StudentItem | null
@@ -139,6 +153,11 @@ export type SubmissionDetail = {
     aiIssues?: string | null
     aiSuggestions?: string | null
     aiRewriteExample?: string | null
+    scoreTotal?: number | null
+    scoreContent?: number | null
+    scoreStructure?: number | null
+    scoreLanguage?: number | null
+    scoreIdea?: number | null
     teacherComment?: string | null
     finalComment?: string | null
   } | null
@@ -175,6 +194,11 @@ export type ArchiveItem = {
   review?: {
     finalComment?: string | null
     aiSummary?: string | null
+    scoreTotal?: number | null
+    scoreContent?: number | null
+    scoreStructure?: number | null
+    scoreLanguage?: number | null
+    scoreIdea?: number | null
   } | null
 }
 
@@ -185,6 +209,7 @@ export type SubmissionPrintData = {
   taskTitle: string
   topicText?: string | null
   finalComment: string
+  score: ReviewScore
   sections: {
     summary: string
     strengths: string
@@ -201,6 +226,7 @@ export type TaskPrintData = {
   items: Array<{
     submissionId: string
     studentName: string
+    score: ReviewScore
     finalComment: string
     sections: SubmissionPrintData['sections']
   }>

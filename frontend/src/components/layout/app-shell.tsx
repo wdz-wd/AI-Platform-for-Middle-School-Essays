@@ -37,7 +37,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <aside
           className={cn(
-            'border-stone-200 bg-white/95 p-4 shadow-panel backdrop-blur transition-[width] duration-300 lg:fixed lg:left-0 lg:top-0 lg:z-30 lg:flex lg:h-screen lg:flex-col lg:border-r',
+            'border-stone-200 bg-white p-4 shadow-panel transition-[width] duration-300 lg:fixed lg:left-0 lg:top-0 lg:z-30 lg:flex lg:h-screen lg:flex-col lg:border-r',
             collapsed ? 'lg:w-[76px]' : 'lg:w-[252px]',
           )}
         >
@@ -55,15 +55,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                 )}
               >
                 <div
-                  className="rounded-2xl bg-amber-100 p-3 text-amber-700"
-                  title="作文批改平台"
+                  className="rounded-2xl bg-blue-50 p-3 text-accent"
+                  title="作文智批平台"
                 >
                   <BookOpenText className="size-6" />
                 </div>
                 {!collapsed ? (
                   <div>
                     <h1 className="whitespace-nowrap text-xl font-bold text-ink">
-                      作文批改平台
+                      作文智批平台
                     </h1>
                   </div>
                 ) : null}
@@ -84,7 +84,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       ? 'justify-center px-0 py-3'
                       : 'gap-3 px-4 py-3',
                     isActive
-                      ? 'bg-accent text-white'
+                      ? 'bg-blue-50 text-accent'
                       : 'text-stone-600 hover:bg-stone-100 hover:text-ink',
                   )
                 }
@@ -162,8 +162,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <div className="p-4">
-          <main className="mx-auto min-h-[calc(100vh-2rem)] max-w-[1600px] rounded-[28px] border border-stone-200 bg-white/80 p-6 shadow-panel backdrop-blur">
+        <div className="p-2 lg:p-3">
+          <main className="mx-auto min-h-[calc(100vh-3rem)] max-w-[1600px]">
             {children}
           </main>
         </div>

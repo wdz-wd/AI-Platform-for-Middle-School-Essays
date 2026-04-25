@@ -47,6 +47,13 @@ export class PrintService {
         submission.review?.teacherComment ??
         submission.review?.aiSummary ??
         '',
+      score: {
+        total: submission.review?.scoreTotal ?? null,
+        content: submission.review?.scoreContent ?? null,
+        structure: submission.review?.scoreStructure ?? null,
+        language: submission.review?.scoreLanguage ?? null,
+        idea: submission.review?.scoreIdea ?? null,
+      },
       sections: {
         summary: submission.review?.aiSummary ?? '',
         strengths: submission.review?.aiStrengths ?? '',
@@ -91,6 +98,13 @@ export class PrintService {
         submissionId: submission.id,
         studentName:
           submission.student?.name ?? submission.detectedName ?? '未识别',
+        score: {
+          total: submission.review?.scoreTotal ?? null,
+          content: submission.review?.scoreContent ?? null,
+          structure: submission.review?.scoreStructure ?? null,
+          language: submission.review?.scoreLanguage ?? null,
+          idea: submission.review?.scoreIdea ?? null,
+        },
         finalComment:
           submission.review?.finalComment ??
           submission.review?.teacherComment ??

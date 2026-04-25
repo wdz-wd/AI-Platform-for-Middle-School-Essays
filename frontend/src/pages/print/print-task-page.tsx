@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { apiFetch } from '../../api/client'
+import { ReviewScorePill } from '../../components/review/score-display'
 import type { TaskPrintData } from '../../types/api'
 
 export function PrintTaskPage() {
@@ -34,7 +35,10 @@ export function PrintTaskPage() {
             key={item.submissionId}
             className="break-inside-avoid border-b border-dashed border-stone-300 pb-8 last:border-b-0"
           >
-            <h2 className="text-xl font-bold text-stone-900">{item.studentName}</h2>
+            <div className="flex items-start justify-between gap-4">
+              <h2 className="text-xl font-bold text-stone-900">{item.studentName}</h2>
+              <ReviewScorePill compact score={item.score} />
+            </div>
             <p className="mt-3 whitespace-pre-wrap">{item.finalComment}</p>
           </section>
         ))}

@@ -4,12 +4,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#1f2937',
-        paper: '#fbfaf6',
-        accent: '#0f766e',
+        ink: '#111827',
+        paper: '#f4f7fb',
+        accent: '#2563eb',
       },
       boxShadow: {
-        panel: '0 20px 50px rgba(15, 23, 42, 0.08)',
+        panel: '0 12px 30px rgba(15, 23, 42, 0.06)',
       },
     },
   },
