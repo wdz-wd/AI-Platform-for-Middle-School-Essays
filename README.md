@@ -38,7 +38,10 @@ Copy-Item .\backend\.env.example .\backend\.env
 
 - `DATABASE_URL`
 - `JWT_SECRET`
-- `BAIDU_OCR_KEY_FILE` 或 `BAIDU_OCR_ACCESS_TOKEN`
+- `OCR_PROVIDER`：可选 `baidu` 或 `paddle`
+- `BAIDU_OCR_API_KEY`
+- `BAIDU_OCR_SECRET_KEY`
+- 如果 `OCR_PROVIDER="paddle"`，还需要 `PADDLE_OCR_API_URL` 和 `PADDLE_OCR_TOKEN`
 - `DEEPSEEK_API_KEY`
 
 ### 2. 生成 Prisma Client
@@ -95,9 +98,10 @@ npm run dev:frontend
 
 ## 说明
 
-- 当前不接 Redis，OCR 使用百度手写作文识别异步接口。
+- 当前不接 Redis，OCR 可通过 `OCR_PROVIDER` 在百度手写作文识别和 Paddle layout-parsing 之间切换。
 - 文本型 `pdf` 会优先直接提取正文并进入 AI 批改。
-- `jpg/png` 与扫描版 `pdf` 会先自动提交到百度 OCR，识别成功后自动进入 AI 批改。
+- `jpg/png` 与扫描版 `pdf` 会先自动提交到配置的 OCR 服务，识别成功后自动进入 AI 批改。
 - 当 OCR 识别失败或文本过短时，作文会进入“待补录正文”状态。
-- 默认会从 `backend/作文管理平台key.txt` 读取 `access_token`；如果 `.env` 中配置了 `BAIDU_OCR_ACCESS_TOKEN`，则以 `.env` 为准。
+- 百度 OCR 现在通过 `BAIDU_OCR_API_KEY` 和 `BAIDU_OCR_SECRET_KEY` 自动换取并缓存 `access_token`，不再依赖本地 key 文本文件。
+- Paddle OCR 会先进行规则清洗，删除作文格下划线、学号栏、页眉页脚等模板噪声，再调用 DeepSeek 整理出标题和正文。
 - DeepSeek 负责题目讲解和作文点评，不负责图片 OCR。

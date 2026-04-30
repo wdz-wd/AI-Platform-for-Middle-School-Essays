@@ -22,6 +22,12 @@ type TopicGuidanceResult = {
   classroomTips: string;
 };
 
+type EssayTextCleanupResult = {
+  title: string;
+  body: string;
+  fullText: string;
+};
+
 @Injectable()
 export class AiReviewService {
   private readonly baseUrl =
@@ -157,6 +163,49 @@ ${input.essayText}
         language: dimensionScores.language,
         idea: dimensionScores.idea,
       },
+    };
+  }
+
+  async cleanupOcrEssayText(input: { rawText: string }): Promise<EssayTextCleanupResult> {
+    const rawText = input.rawText.trim();
+    if (!rawText) {
+      return { title: '', body: '', fullText: '' };
+    }
+
+    const content = await this.chat([
+      {
+        role: 'system',
+        content:
+          '你是一名作文 OCR 文本整理助手。你只负责从 OCR 结果中提取作文标题和正文。必须只返回 JSON，不要输出 markdown，不要解释。',
+      },
+      {
+        role: 'user',
+        content: `请整理下面的 OCR 文本，只返回作文标题和作文正文。
+
+处理规则：
+1. 删除班级、姓名、学号、作文纸名称、页眉页脚、字数标记、温度/编号、公式、空白格线等无关内容。
+2. 保留作文真实标题；如果没有明确标题，title 返回空字符串。
+3. 正文按自然段合并，修复明显被 OCR 拆开的换行，但不要改写作文内容，不要润色，不要补写。
+4. 如果有跨页或左右栏顺序混乱，请根据语义尽量拼接成通顺正文。
+5. 只返回字段 title、body，二者都必须是字符串，不要返回其他字段。
+
+OCR文本：
+${rawText}
+
+返回示例：
+{"title":"我的未来不是梦","body":"……"}`,
+      },
+    ]);
+
+    const parsed = this.parseJson(content);
+    const title = this.asString(parsed.title).replace(/^#+\s*/, '').trim();
+    const body = this.asString(parsed.body).trim();
+    const fullText = [title, body].filter(Boolean).join('\n\n').trim();
+
+    return {
+      title,
+      body,
+      fullText,
     };
   }
 

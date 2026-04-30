@@ -1,15 +1,12 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { resolve } from 'node:path';
 import { AppModule } from './app.module';
+import { resolveUploadDir } from './common/paths';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  const uploadDir = resolve(
-    process.cwd(),
-    process.env.UPLOAD_DIR ?? '../uploads',
-  );
+  const uploadDir = resolveUploadDir(process.env.UPLOAD_DIR);
 
   app.setGlobalPrefix('api');
   app.enableCors({

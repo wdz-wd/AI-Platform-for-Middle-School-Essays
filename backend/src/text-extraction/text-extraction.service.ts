@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { FileKind } from '@prisma/client';
+import { AiReviewService } from '../ai-review/ai-review.service';
 import { BaiduOcrService } from './baidu-ocr.service';
+import { PaddleOcrService } from './paddle-ocr.service';
 
 type ExtractionOptions = {
   waitForOcr?: boolean;
@@ -9,14 +11,25 @@ type ExtractionOptions = {
 
 @Injectable()
 export class TextExtractionService {
-  constructor(private readonly baiduOcrService: BaiduOcrService) {}
+  private readonly logger = new Logger(TextExtractionService.name);
+  private readonly ocrProvider = (
+    process.env.OCR_PROVIDER ?? process.env.TEXT_EXTRACTION_OCR_PROVIDER ?? 'baidu'
+  )
+    .trim()
+    .toLowerCase();
+
+  constructor(
+    private readonly baiduOcrService: BaiduOcrService,
+    private readonly paddleOcrService: PaddleOcrService,
+    private readonly aiReviewService: AiReviewService,
+  ) {}
 
   async extractText(
     input: { kind: FileKind; buffer: Buffer },
     options: ExtractionOptions = {},
   ) {
     if (input.kind !== FileKind.PDF) {
-      if (!this.baiduOcrService.isEnabled()) {
+      if (!this.isOcrEnabled()) {
         return {
           text: '',
           requiresManualCorrection: true,
@@ -26,7 +39,7 @@ export class TextExtractionService {
       }
 
       if (options.waitForOcr) {
-        const ocrResult = await this.baiduOcrService.recognize({
+        const ocrResult = await this.recognizeWithConfiguredProvider({
           kind: input.kind,
           buffer: input.buffer,
         });
@@ -35,7 +48,7 @@ export class TextExtractionService {
           text: ocrResult.fullText,
           requiresManualCorrection: ocrResult.fullText.length < 20,
           requiresOcrPolling: false,
-          source: 'BAIDU_OCR',
+          source: ocrResult.source,
         };
       }
 
@@ -43,7 +56,7 @@ export class TextExtractionService {
         text: '',
         requiresManualCorrection: false,
         requiresOcrPolling: true,
-        source: 'BAIDU_OCR_PENDING',
+        source: this.ocrProvider === 'paddle' ? 'PADDLE_OCR_PENDING' : 'BAIDU_OCR_PENDING',
       };
     }
 
@@ -57,7 +70,7 @@ export class TextExtractionService {
       };
     }
 
-    if (!this.baiduOcrService.isEnabled()) {
+    if (!this.isOcrEnabled()) {
       return {
         text,
         requiresManualCorrection: true,
@@ -67,7 +80,7 @@ export class TextExtractionService {
     }
 
     if (options.waitForOcr) {
-      const ocrResult = await this.baiduOcrService.recognize({
+      const ocrResult = await this.recognizeWithConfiguredProvider({
         kind: input.kind,
         buffer: input.buffer,
         pdfFileNum: options.pdfFileNum,
@@ -77,7 +90,7 @@ export class TextExtractionService {
         text: ocrResult.fullText,
         requiresManualCorrection: ocrResult.fullText.length < 20,
         requiresOcrPolling: false,
-        source: 'BAIDU_OCR',
+        source: ocrResult.source,
       };
     }
 
@@ -96,6 +109,52 @@ export class TextExtractionService {
         .default ?? (pdfParseModule as unknown as (buffer: Buffer) => Promise<{ text?: string }>);
     const parsed = await pdfParse(buffer);
     return this.normalizeText(parsed.text ?? '');
+  }
+
+  private isOcrEnabled() {
+    if (this.ocrProvider === 'paddle') {
+      return this.paddleOcrService.isEnabled();
+    }
+
+    return this.baiduOcrService.isEnabled();
+  }
+
+  private async recognizeWithConfiguredProvider(input: {
+    kind: FileKind;
+    buffer: Buffer;
+    pdfFileNum?: string;
+  }) {
+    if (this.ocrProvider === 'paddle') {
+      const result = await this.paddleOcrService.recognize(input);
+      return {
+        ...result,
+        fullText: await this.cleanupPaddleText(result.fullText),
+        source: 'PADDLE_OCR',
+      };
+    }
+
+    const result = await this.baiduOcrService.recognize(input);
+    return {
+      ...result,
+      source: 'BAIDU_OCR',
+    };
+  }
+
+  private async cleanupPaddleText(text: string) {
+    const normalized = this.normalizeText(text);
+    if (!normalized) {
+      return '';
+    }
+
+    try {
+      const cleaned = await this.aiReviewService.cleanupOcrEssayText({
+        rawText: normalized,
+      });
+      return cleaned.fullText || normalized;
+    } catch (error) {
+      this.logger.warn(`Paddle OCR 文本 AI 整理失败，使用规则清洗结果: ${String(error)}`);
+      return normalized;
+    }
   }
 
   private normalizeText(text: string) {

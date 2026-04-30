@@ -1,9 +1,13 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { FileKind } from '@prisma/client';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { BaiduOcrTokenService } from './baidu-ocr-token.service';
 
-type BaiduOcrJobStatus = 'Pending' | 'Processing' | 'Success' | 'Failed';
+type BaiduOcrJobStatus =
+  | 'Pending'
+  | 'Processing'
+  | 'Running'
+  | 'Success'
+  | 'Failed';
 
 type BaiduOcrResult = {
   titleText: string;
@@ -47,8 +51,6 @@ type GetResultResponse = {
 @Injectable()
 export class BaiduOcrService {
   private readonly logger = new Logger(BaiduOcrService.name);
-  private readonly accessToken =
-    process.env.BAIDU_OCR_ACCESS_TOKEN?.trim() ?? this.readAccessTokenFromFile();
   private readonly createTaskUrl =
     process.env.BAIDU_OCR_CREATE_URL ??
     'https://aip.baidubce.com/rest/2.0/ocr/v1/handwriting_composition/create_task';
@@ -64,8 +66,10 @@ export class BaiduOcrService {
     16,
   );
 
+  constructor(private readonly tokenService: BaiduOcrTokenService) {}
+
   isEnabled() {
-    return !!this.accessToken;
+    return this.tokenService.isEnabled();
   }
 
   async recognize(input: {
@@ -82,7 +86,6 @@ export class BaiduOcrService {
     buffer: Buffer;
     pdfFileNum?: string;
   }) {
-    const accessToken = this.requireAccessToken();
     const bodyParts: string[] = [];
     const encodedPayload = encodeURIComponent(input.buffer.toString('base64'));
 
@@ -97,18 +100,10 @@ export class BaiduOcrService {
       bodyParts.push(`image=${encodedPayload}`);
     }
 
-    const response = await fetch(
-      `${this.createTaskUrl}?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: bodyParts.join('&'),
-      },
+    const json = await this.postFormWithTokenRetry<CreateTaskResponse>(
+      this.createTaskUrl,
+      bodyParts.join('&'),
     );
-
-    const json = (await response.json()) as CreateTaskResponse;
     this.assertSuccess(json, '提交百度 OCR 任务失败');
 
     const taskId = json.result?.task_id?.trim();
@@ -139,23 +134,14 @@ export class BaiduOcrService {
   }
 
   private async getResult(taskId: string) {
-    const accessToken = this.requireAccessToken();
-    const response = await fetch(
-      `${this.getResultUrl}?access_token=${encodeURIComponent(accessToken)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ task_id: taskId }),
-      },
+    const json = await this.postJsonWithTokenRetry<GetResultResponse>(
+      this.getResultUrl,
+      { task_id: taskId },
     );
-
-    const json = (await response.json()) as GetResultResponse;
     this.assertSuccess(json, '获取百度 OCR 结果失败', ['Pending', 'Processing']);
 
     const status = json.result?.status;
-    if (status === 'Pending' || status === 'Processing') {
+    if (status === 'Pending' || status === 'Processing' || status === 'Running') {
       return { status, data: null };
     }
 
@@ -168,6 +154,68 @@ export class BaiduOcrService {
       status,
       data: this.normalizeResult(json),
     };
+  }
+
+  private async postFormWithTokenRetry<T extends { error_code?: number; error_msg?: string }>(
+    url: string,
+    body: string,
+  ) {
+    return this.requestWithTokenRetry<T>(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    });
+  }
+
+  private async postJsonWithTokenRetry<T extends { error_code?: number; error_msg?: string }>(
+    url: string,
+    payload: Record<string, string>,
+  ) {
+    return this.requestWithTokenRetry<T>(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  private async requestWithTokenRetry<T extends { error_code?: number; error_msg?: string }>(
+    url: string,
+    init: RequestInit,
+  ) {
+    let json = await this.requestWithToken<T>(url, init, false);
+    if (this.isAuthError(json)) {
+      json = await this.requestWithToken<T>(url, init, true);
+    }
+
+    return json;
+  }
+
+  private async requestWithToken<T>(
+    url: string,
+    init: RequestInit,
+    forceRefresh: boolean,
+  ) {
+    const accessToken = await this.tokenService.getAccessToken(forceRefresh);
+    const response = await fetch(
+      `${url}?access_token=${encodeURIComponent(accessToken)}`,
+      init,
+    );
+    return (await response.json()) as T;
+  }
+
+  private isAuthError(response: { error_code?: number; error_msg?: string }) {
+    const code = response.error_code ?? 0;
+    const message = response.error_msg?.toLowerCase() ?? '';
+    return (
+      code === 110 ||
+      code === 111 ||
+      message.includes('access token invalid') ||
+      message.includes('access token expired')
+    );
   }
 
   private normalizeResult(response: GetResultResponse): BaiduOcrResult {
@@ -211,37 +259,6 @@ export class BaiduOcrService {
     throw new InternalServerErrorException(
       `${fallbackMessage}：${errorCode} ${errorMessage || '未知错误'}`,
     );
-  }
-
-  private requireAccessToken() {
-    if (!this.accessToken) {
-      throw new InternalServerErrorException(
-        '缺少百度 OCR access_token，请在 .env 或 key 文件中配置',
-      );
-    }
-
-    return this.accessToken;
-  }
-
-  private readAccessTokenFromFile() {
-    const keyFilePath = this.resolveKeyFilePath();
-    if (!keyFilePath || !existsSync(keyFilePath)) {
-      return '';
-    }
-
-    const fileText = readFileSync(keyFilePath, 'utf8');
-    const matched = fileText.match(/access_token:\s*(\S+)/i);
-    return matched?.[1]?.trim() ?? '';
-  }
-
-  private resolveKeyFilePath() {
-    const candidates = [
-      process.env.BAIDU_OCR_KEY_FILE?.trim(),
-      resolve(process.cwd(), '作文管理平台key.txt'),
-      resolve(process.cwd(), 'backend', '作文管理平台key.txt'),
-    ].filter(Boolean) as string[];
-
-    return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? '';
   }
 
   private parseNumber(raw: string | undefined, fallback: number) {

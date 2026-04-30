@@ -3,6 +3,7 @@ import { FileKind } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
+import { resolveUploadDir } from '../common/paths';
 
 type UploadLike = {
   originalname: string;
@@ -12,10 +13,7 @@ type UploadLike = {
 
 @Injectable()
 export class FilesService {
-  private readonly baseDir = resolve(
-    process.cwd(),
-    process.env.UPLOAD_DIR ?? '../uploads',
-  );
+  private readonly baseDir = resolveUploadDir(process.env.UPLOAD_DIR);
 
   async storeTaskTopicFile(taskId: string, file: UploadLike) {
     const normalizedOriginalName = this.normalizeOriginalName(file.originalname);

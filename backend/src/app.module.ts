@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ArchiveModule } from './archive/archive.module';
 import { AuthModule } from './auth/auth.module';
 import { ClassesModule } from './classes/classes.module';
+import { resolveBackendEnvFiles } from './common/paths';
 import { EssayTasksModule } from './essay-tasks/essay-tasks.module';
 import { FilesModule } from './files/files.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -15,7 +16,7 @@ import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: resolveBackendEnvFiles() }),
     PrismaModule,
     UsersModule,
     AuthModule,
