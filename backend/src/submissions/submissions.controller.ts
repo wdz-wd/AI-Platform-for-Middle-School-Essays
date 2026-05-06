@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -51,5 +52,13 @@ export class SubmissionsController {
     @CurrentUser() currentUser: CurrentUserType,
   ) {
     return this.submissionsService.triggerReview(id, currentUser);
+  }
+
+  @Delete(':id')
+  remove(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: CurrentUserType,
+  ) {
+    return this.submissionsService.remove(id, currentUser);
   }
 }

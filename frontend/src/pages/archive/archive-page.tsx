@@ -33,6 +33,7 @@ import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
 import { ChartContainer } from '../../components/ui/chart'
 import { Input } from '../../components/ui/input'
+import { getCurrentAcademicYear } from '../../lib/academic-year'
 import { getSubmissionStatusMeta } from '../../lib/status'
 import { cn, formatDate } from '../../lib/utils'
 import type { ArchiveItem, ClassItem, StudentItem } from '../../types/api'
@@ -129,13 +130,16 @@ function miniComment(status: ArchiveItem['status']) {
 }
 
 export function ArchivePage() {
+  const currentAcademicYear = getCurrentAcademicYear()
   const [filters, setFilters] = useState<{
+    academicYear: string
     classId: string
     studentId: string
     keyword: string
     status: StatusFilter
     scoreBucket: ScoreBucket
   }>({
+    academicYear: currentAcademicYear,
     classId: '',
     studentId: '',
     keyword: '',
@@ -165,11 +169,37 @@ export function ArchivePage() {
     },
   })
 
+  const academicYearOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        (classesQuery.data ?? [])
+          .map((item) => item.academicYear)
+          .filter((item): item is string => Boolean(item)),
+      ),
+    ).sort((a, b) => String(b).localeCompare(String(a)))
+  }, [classesQuery.data])
+
+  const filteredClasses = useMemo(() => {
+    const classes = classesQuery.data ?? []
+    if (!filters.academicYear) return classes
+    return classes.filter((item) => item.academicYear === filters.academicYear)
+  }, [classesQuery.data, filters.academicYear])
+
+  const filteredClassIds = useMemo(
+    () => new Set(filteredClasses.map((item) => item.id)),
+    [filteredClasses],
+  )
+
   const filteredStudents = useMemo(() => {
     const students = studentsQuery.data ?? []
     if (!filters.classId) return students
     return students.filter((item) => item.classId === filters.classId)
   }, [filters.classId, studentsQuery.data])
+
+  const visibleStudents = useMemo(() => {
+    if (filters.classId || !filters.academicYear) return filteredStudents
+    return filteredStudents.filter((item) => filteredClassIds.has(item.classId))
+  }, [filteredClassIds, filteredStudents, filters.academicYear, filters.classId])
 
   const studentMap = useMemo(() => {
     return new Map((studentsQuery.data ?? []).map((item) => [item.id, item]))
@@ -182,8 +212,21 @@ export function ArchivePage() {
       return {
         ...item,
         score,
-        studentName: item.student?.name ?? item.detectedName ?? '未绑定',
-        className: student?.class?.name ?? '未分班',
+        studentName: item.student?.name ?? '未指定',
+        academicYear:
+          item.class?.academicYear ??
+          item.student?.class?.academicYear ??
+          student?.class?.academicYear ??
+          item.task.classes?.[0]?.class.academicYear ??
+          item.task.class?.academicYear ??
+          '未指定学年',
+        className:
+          item.class?.name ??
+          item.student?.class?.name ??
+          student?.class?.name ??
+          item.task.classes?.[0]?.class.name ??
+          item.task.class?.name ??
+          '未指定班级',
         finalPreview: item.review?.finalComment ?? item.review?.aiSummary ?? '暂无评语',
       }
     })
@@ -191,6 +234,7 @@ export function ArchivePage() {
 
   const visibleItems = useMemo(() => {
     return decoratedItems.filter((item) => {
+      if (filters.academicYear && item.academicYear !== filters.academicYear) return false
       if (filters.status === 'REVIEWED' && item.status !== 'REVIEWED') return false
       if (filters.status === 'AI_DONE' && item.status !== 'AI_DONE') return false
       if (
@@ -219,11 +263,18 @@ export function ArchivePage() {
 
       return true
     })
-  }, [decoratedItems, filters.keyword, filters.scoreBucket, filters.status])
+  }, [decoratedItems, filters.academicYear, filters.keyword, filters.scoreBucket, filters.status])
 
   useEffect(() => {
     setPage(1)
-  }, [filters.classId, filters.studentId, filters.keyword, filters.scoreBucket, filters.status])
+  }, [
+    filters.academicYear,
+    filters.classId,
+    filters.studentId,
+    filters.keyword,
+    filters.scoreBucket,
+    filters.status,
+  ])
 
   const stats = useMemo(() => {
     const scored = visibleItems
@@ -414,18 +465,26 @@ export function ArchivePage() {
       <div className="grid gap-6 xl:grid-cols-[1.75fr_0.65fr]">
         <div className="space-y-6">
           <Card className="rounded-xl p-4 shadow-none">
-            <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr_1fr_1fr_auto]">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-stone-400" />
-                <Input
-                  className="pl-9"
-                  placeholder="搜索作文题、学生姓名或评语关键词"
-                  value={filters.keyword}
-                  onChange={(event) =>
-                    setFilters((current) => ({ ...current, keyword: event.target.value }))
-                  }
-                />
-              </div>
+            <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+              <select
+                className="h-11 rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
+                value={filters.academicYear}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    academicYear: event.target.value,
+                    classId: '',
+                    studentId: '',
+                  }))
+                }
+              >
+                <option value="">全部学年</option>
+                {academicYearOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
               <select
                 className="h-11 rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
                 value={filters.classId}
@@ -438,7 +497,7 @@ export function ArchivePage() {
                 }
               >
                 <option value="">全部班级</option>
-                {classesQuery.data?.map((item) => (
+                {filteredClasses.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -452,7 +511,7 @@ export function ArchivePage() {
                 }
               >
                 <option value="">全部学生</option>
-                {filteredStudents.map((item) => (
+                {visibleStudents.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -478,6 +537,7 @@ export function ArchivePage() {
                 variant="secondary"
                 onClick={() =>
                   setFilters({
+                    academicYear: currentAcademicYear,
                     classId: '',
                     studentId: '',
                     keyword: '',
@@ -491,7 +551,18 @@ export function ArchivePage() {
               </Button>
             </div>
 
-            <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+            <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr_auto]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-stone-400" />
+                <Input
+                  className="pl-9"
+                  placeholder="搜索作文题、学生姓名或评语关键词"
+                  value={filters.keyword}
+                  onChange={(event) =>
+                    setFilters((current) => ({ ...current, keyword: event.target.value }))
+                  }
+                />
+              </div>
               <select
                 className="h-11 rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
                 value={filters.scoreBucket}
@@ -531,10 +602,10 @@ export function ArchivePage() {
                 <thead className="bg-stone-50 text-left text-stone-500">
                   <tr>
                     <th className="px-5 py-4 font-medium">作文信息</th>
-                    <th className="w-[120px] px-5 py-4 font-medium">学生姓名</th>
-                    <th className="px-5 py-4 font-medium">班级</th>
+                    <th className="w-[100px] px-5 py-4 font-medium">学生姓名</th>
+                    <th className="w-[120px] px-5 py-4 font-medium">班级</th>
                     <th className="w-[180px] px-5 py-4 font-medium">提交时间</th>
-                    <th className="w-[80px] px-5 py-4 font-medium">AI评分</th>
+                    <th className="w-[80px] px-5 py-4 font-medium">得分</th>
                     <th className="w-[120px] px-5 py-4 font-medium">批改状态</th>
                     <th className="px-5 py-4 font-medium">终稿摘要</th>
                     <th className="w-[80px] px-5 py-4 font-medium">操作</th>

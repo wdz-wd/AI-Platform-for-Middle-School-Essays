@@ -22,7 +22,7 @@ export class ClassesService {
             select: { id: true, displayName: true, username: true },
           },
           _count: {
-            select: { students: true, essayTasks: true },
+            select: { students: true },
           },
         },
       });
@@ -36,7 +36,7 @@ export class ClassesService {
           select: { id: true, displayName: true, username: true },
         },
         _count: {
-          select: { students: true, essayTasks: true },
+          select: { students: true },
         },
       },
     });

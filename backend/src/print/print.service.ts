@@ -12,14 +12,19 @@ export class PrintService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getSubmissionPrint(submissionId: string, currentUser: CurrentUserType) {
-    const submission = await this.prisma.submission.findUnique({
-      where: { id: submissionId },
+    const submission = await this.prisma.submission.findFirst({
+      where: { id: submissionId, deletedAt: null, task: { deletedAt: null } },
       include: {
         task: {
           include: {
             class: true,
+            classes: {
+              include: { class: true },
+              orderBy: { createdAt: 'asc' },
+            },
           },
         },
+        class: true,
         student: true,
         review: true,
       },
@@ -39,7 +44,10 @@ export class PrintService {
     return {
       submissionId: submission.id,
       studentName: submission.student?.name ?? submission.detectedName ?? '未识别',
-      className: submission.task.class.name,
+      className:
+        submission.class?.name ??
+        submission.task.classes[0]?.class.name ??
+        submission.task.class.name,
       taskTitle: submission.task.title,
       topicText: submission.task.topicText,
       finalComment:
@@ -47,6 +55,8 @@ export class PrintService {
         submission.review?.teacherComment ??
         submission.review?.aiSummary ??
         '',
+      teacherFinalComment:
+        submission.review?.finalComment ?? submission.review?.teacherComment ?? '',
       score: {
         total: submission.review?.scoreTotal ?? null,
         content: submission.review?.scoreContent ?? null,
@@ -65,12 +75,18 @@ export class PrintService {
   }
 
   async getTaskPrint(taskId: string, currentUser: CurrentUserType) {
-    const task = await this.prisma.essayTask.findUnique({
-      where: { id: taskId },
+    const task = await this.prisma.essayTask.findFirst({
+      where: { id: taskId, deletedAt: null },
       include: {
         class: true,
+        classes: {
+          include: { class: true },
+          orderBy: { createdAt: 'asc' },
+        },
         submissions: {
+          where: { deletedAt: null },
           include: {
+            class: true,
             student: true,
             review: true,
           },
@@ -93,7 +109,8 @@ export class PrintService {
     return {
       taskId: task.id,
       taskTitle: task.title,
-      className: task.class.name,
+      className:
+        task.classes.map((item) => item.class.name).join('、') || task.class.name,
       items: task.submissions.map((submission) => ({
         submissionId: submission.id,
         studentName:
@@ -110,6 +127,8 @@ export class PrintService {
           submission.review?.teacherComment ??
           submission.review?.aiSummary ??
           '',
+        teacherFinalComment:
+          submission.review?.finalComment ?? submission.review?.teacherComment ?? '',
         sections: {
           summary: submission.review?.aiSummary ?? '',
           strengths: submission.review?.aiStrengths ?? '',

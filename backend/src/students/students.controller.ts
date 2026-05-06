@@ -1,13 +1,19 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  ParseFilePipeBuilder,
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { CurrentUserType } from '../common/types/current-user.type';
@@ -37,6 +43,21 @@ export class StudentsController {
     return this.studentsService.create(dto, currentUser);
   }
 
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  importFromTemplate(
+    @Body('classId') classId: string,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addMaxSizeValidator({ maxSize: 5 * 1024 * 1024 })
+        .build({ fileIsRequired: true }),
+    )
+    file: Express.Multer.File,
+    @CurrentUser() currentUser: CurrentUserType,
+  ) {
+    return this.studentsService.importFromTemplate(classId, file, currentUser);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -44,5 +65,13 @@ export class StudentsController {
     @CurrentUser() currentUser: CurrentUserType,
   ) {
     return this.studentsService.update(id, dto, currentUser);
+  }
+
+  @Delete(':id')
+  remove(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: CurrentUserType,
+  ) {
+    return this.studentsService.remove(id, currentUser);
   }
 }

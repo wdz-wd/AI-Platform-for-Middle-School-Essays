@@ -19,7 +19,6 @@ export type ClassItem = {
   } | null
   _count?: {
     students: number
-    essayTasks: number
   }
 }
 
@@ -34,6 +33,7 @@ export type StudentItem = {
     id: string
     name: string
     grade?: string | null
+    academicYear?: string | null
   }
 }
 
@@ -85,6 +85,11 @@ export type TaskItem = {
     name: string
     grade?: string | null
   }
+  classes?: Array<{
+    id: string
+    name: string
+    grade?: string | null
+  }>
 }
 
 export type TaskDetail = TaskItem & {
@@ -104,6 +109,12 @@ export type TaskDetail = TaskItem & {
       id: string
       name: string
       studentNo?: string | null
+      classId?: string
+    } | null
+    class?: {
+      id: string
+      name: string
+      grade?: string | null
     } | null
     files: Array<{
       id: string
@@ -137,6 +148,11 @@ export type SubmissionDetail = {
   detectedName?: string | null
   status: SubmissionStatus
   student?: StudentItem | null
+  class?: {
+    id: string
+    name: string
+    grade?: string | null
+  } | null
   files: Array<{
     id: string
     fileName: string
@@ -169,6 +185,11 @@ export type SubmissionDetail = {
       id: string
       name: string
     }
+    classes?: Array<{
+      id: string
+      name: string
+      grade?: string | null
+    }>
     submissions: Array<{
       id: string
       detectedName?: string | null
@@ -185,11 +206,37 @@ export type ArchiveItem = {
   task: {
     id: string
     title: string
+    class?: {
+      id: string
+      name: string
+      grade?: string | null
+      academicYear?: string | null
+    } | null
+    classes?: Array<{
+      class: {
+        id: string
+        name: string
+        grade?: string | null
+        academicYear?: string | null
+      }
+    }>
+  }
+  class?: {
+    id: string
+    name: string
+    grade?: string | null
+    academicYear?: string | null
   }
   student?: {
     id: string
     name: string
     studentNo?: string | null
+    class?: {
+      id: string
+      name: string
+      grade?: string | null
+      academicYear?: string | null
+    } | null
   } | null
   review?: {
     finalComment?: string | null
@@ -209,6 +256,7 @@ export type SubmissionPrintData = {
   taskTitle: string
   topicText?: string | null
   finalComment: string
+  teacherFinalComment?: string
   score: ReviewScore
   sections: {
     summary: string
@@ -228,6 +276,7 @@ export type TaskPrintData = {
     studentName: string
     score: ReviewScore
     finalComment: string
+    teacherFinalComment?: string
     sections: SubmissionPrintData['sections']
   }>
 }

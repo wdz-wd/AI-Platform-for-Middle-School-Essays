@@ -72,10 +72,12 @@ ${input.topicText}`,
   async generateEssayReview(input: {
     taskTitle: string;
     topicText?: string | null;
+    topicGuidance?: TopicGuidanceResult | Record<string, unknown> | null;
     studentName?: string | null;
     className?: string | null;
     essayText: string;
   }): Promise<EssayReviewResult> {
+    const topicGuidanceText = this.formatTopicGuidance(input.topicGuidance);
     const content = await this.chat([
       {
         role: 'system',
@@ -94,6 +96,12 @@ ${input.topicText}`,
 5. 没写完、明显跑题、内容非常空泛或质量很差的作文，才给 30 分左右或低于 30 分。
 6. 当前依据 OCR 转写文本评分，无法准确判断字迹、卷面和部分标点，因此不要因为这些图像因素重扣分；若文本中存在非常明显的句子残缺或严重不通顺，可酌情降低总分。
 7. 除总分外，还要给出四个展示用子项分：内容（20分）、结构（10分）、语言（10分）、立意（10分）。这四项是为了展示解释评分，不是机械公式来源，但最终返回时四项之和必须等于总分。
+
+前置解题思路使用要求：
+1. 下方“题目解题思路”来自前一步 AI 对作文题目的审题、立意和结构分析，必须作为重要参照。
+2. 评分时要结合题目解题思路判断学生作文是否切题、立意是否准确、材料选择是否服务中心、结构安排是否贴合题目要求。
+3. 评语不能只做泛泛语言评价，要指出学生作文与题目解题思路之间的贴合点和偏差点。
+4. 题目解题思路只作为阅卷参照，不要照搬成学生作文内容，也不要因为学生没有完全按该思路写就机械扣分；只要立意合理、能自洽切题，也应认可。
 
 输出字段要求：
 1. summary：80-120字，总结作文整体完成度、中心、语言与结构情况。
@@ -119,6 +127,8 @@ ${input.topicText}`,
 
 作文任务：${input.taskTitle}
 作文题目原文：${input.topicText ?? '未提供'}
+题目解题思路：
+${topicGuidanceText || '未提供'}
 学生姓名：${input.studentName ?? '未知'}
 班级：${input.className ?? '未知'}
 作文正文：
@@ -270,6 +280,22 @@ ${rawText}
     }
 
     return '';
+  }
+
+  private formatTopicGuidance(
+    value?: TopicGuidanceResult | Record<string, unknown> | null,
+  ) {
+    const guidance = this.asRecord(value);
+    const parts = [
+      ['题目理解', this.pickString(guidance, ['summary'])],
+      ['立意方向', this.pickString(guidance, ['ideas'])],
+      ['结构建议', this.pickString(guidance, ['structure'])],
+      ['讲解提示', this.pickString(guidance, ['classroomTips'])],
+    ]
+      .filter(([, content]) => content)
+      .map(([label, content]) => `${label}：${content}`);
+
+    return parts.join('\n');
   }
 
   private asRecord(value: unknown) {

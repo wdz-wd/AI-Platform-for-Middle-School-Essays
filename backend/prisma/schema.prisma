@@ -65,6 +65,8 @@ model Class {
   teacher      User?       @relation(fields: [teacherId], references: [id])
   students     Student[]
   essayTasks   EssayTask[]
+  essayTaskLinks EssayTaskClass[]
+  submissions Submission[]
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 }
@@ -96,10 +98,22 @@ model EssayTask {
   failedCount   Int             @default(0)
   teacher       User            @relation(fields: [teacherId], references: [id], onDelete: Restrict)
   class         Class           @relation(fields: [classId], references: [id], onDelete: Restrict)
+  classes       EssayTaskClass[]
   topicFiles    EssayTopicFile[]
   submissions   Submission[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+  deletedAt     DateTime?
+}
+
+model EssayTaskClass {
+  taskId    String
+  classId   String
+  task      EssayTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  class     Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@id([taskId, classId])
 }
 
 model EssayTopicFile {
@@ -116,18 +130,21 @@ model EssayTopicFile {
 model Submission {
   id             String           @id @default(cuid())
   taskId         String
+  classId        String?
   studentId      String?
   detectedName   String?
   detectedClass  String?
   status         SubmissionStatus @default(UPLOADED)
   reviewedAt     DateTime?
   task           EssayTask        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  class          Class?           @relation(fields: [classId], references: [id], onDelete: SetNull)
   student        Student?         @relation(fields: [studentId], references: [id], onDelete: SetNull)
   files          SubmissionFile[]
   text           SubmissionText?
   review         Review?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
 }
 
 model SubmissionFile {

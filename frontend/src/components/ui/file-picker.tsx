@@ -8,6 +8,7 @@ type FilePickerProps = {
   label: string
   hint?: string
   value?: File | FileList | null
+  hideAction?: boolean
   onChange: (files: FileList | null) => void
 }
 
@@ -17,6 +18,7 @@ export function FilePicker({
   label,
   hint,
   value,
+  hideAction,
   onChange,
 }: FilePickerProps) {
   const inputId = React.useId()
@@ -48,9 +50,11 @@ export function FilePicker({
             {summary || hint || '支持 jpg、png、pdf'}
           </span>
         </span>
-        <span className="rounded-xl bg-accent px-3 py-2 text-xs font-bold text-white shadow-sm">
-          选择文件
-        </span>
+        {hideAction ? null : (
+          <span className="rounded-xl bg-accent px-3 py-2 text-xs font-bold text-white shadow-sm">
+            选择文件
+          </span>
+        )}
       </label>
     </div>
   )

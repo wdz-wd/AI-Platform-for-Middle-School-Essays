@@ -1,8 +1,15 @@
-import { IsOptional, IsString } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsOptional, IsString } from 'class-validator';
 
 export class CreateTaskDto {
+  @IsOptional()
   @IsString()
-  classId!: string;
+  classId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  classIds?: string[];
 
   @IsString()
   title!: string;

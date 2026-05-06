@@ -18,25 +18,57 @@ export class ArchiveService {
   ) {
     return this.prisma.submission.findMany({
       where: {
+        deletedAt: null,
         ...(query.studentId ? { studentId: query.studentId } : {}),
         ...(query.taskId ? { taskId: query.taskId } : {}),
-        ...(query.keyword
+        ...(query.classId || query.keyword
           ? {
-              OR: [
-                { detectedName: { contains: query.keyword, mode: 'insensitive' } },
-                {
-                  review: {
-                    finalComment: {
-                      contains: query.keyword,
-                      mode: 'insensitive',
-                    },
-                  },
-                },
+              AND: [
+                ...(query.classId
+                  ? [
+                      {
+                        OR: [
+                          { classId: query.classId },
+                          { student: { classId: query.classId } },
+                          {
+                            task: {
+                              OR: [
+                                { classId: query.classId },
+                                { classes: { some: { classId: query.classId } } },
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                    ]
+                  : []),
+                ...(query.keyword
+                  ? [
+                      {
+                        OR: [
+                          {
+                            detectedName: {
+                              contains: query.keyword,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                          {
+                            review: {
+                              finalComment: {
+                                contains: query.keyword,
+                                mode: 'insensitive' as const,
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    ]
+                  : []),
               ],
             }
           : {}),
         task: {
-          ...(query.classId ? { classId: query.classId } : {}),
+          deletedAt: null,
           ...(currentUser.role === UserRole.ADMIN
             ? {}
             : { teacherId: currentUser.id }),
@@ -44,10 +76,34 @@ export class ArchiveService {
       },
       include: {
         task: {
-          select: { id: true, title: true },
+          select: {
+            id: true,
+            title: true,
+            class: {
+              select: { id: true, name: true, grade: true, academicYear: true },
+            },
+            classes: {
+              include: {
+                class: {
+                  select: { id: true, name: true, grade: true, academicYear: true },
+                },
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
+        class: {
+          select: { id: true, name: true, grade: true, academicYear: true },
         },
         student: {
-          select: { id: true, name: true, studentNo: true },
+          select: {
+            id: true,
+            name: true,
+            studentNo: true,
+            class: {
+              select: { id: true, name: true, grade: true, academicYear: true },
+            },
+          },
         },
         review: true,
       },

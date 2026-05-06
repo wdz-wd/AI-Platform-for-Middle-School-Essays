@@ -1,0 +1,2 @@
+ALTER TABLE "EssayTask" ADD COLUMN "deletedAt" TIMESTAMP(3);
+ALTER TABLE "Submission" ADD COLUMN "deletedAt" TIMESTAMP(3);

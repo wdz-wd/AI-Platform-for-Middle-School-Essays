@@ -13,12 +13,21 @@ import {
 import path from 'node:path';
 import type { Express } from 'express';
 import type { CurrentUserType } from '../common/types/current-user.type';
+import { getCurrentAcademicYear } from '../common/utils/academic-year.util';
 import { AiReviewService } from '../ai-review/ai-review.service';
 import { FilesService } from '../files/files.service';
 import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TextExtractionService } from '../text-extraction/text-extraction.service';
 import { CreateTaskDto } from './dto/create-task.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
+
+type TaskWithClassLinks = {
+  class: { id: string; name: string; grade?: string | null };
+  classes?: Array<{
+    class: { id: string; name: string; grade?: string | null };
+  }>;
+};
 
 @Injectable()
 export class EssayTasksService {
@@ -31,20 +40,11 @@ export class EssayTasksService {
   ) {}
 
   async create(dto: CreateTaskDto, currentUser: CurrentUserType) {
-    const classEntity = await this.prisma.class.findUnique({
-      where: { id: dto.classId },
-    });
-
-    if (!classEntity) {
-      throw new NotFoundException('班级不存在');
-    }
-
-    if (
-      currentUser.role !== UserRole.ADMIN &&
-      classEntity.teacherId !== currentUser.id
-    ) {
-      throw new ForbiddenException('无权在该班级创建任务');
-    }
+    const classIds = this.normalizeClassIds(
+      dto.classIds ?? [dto.classId].filter(Boolean),
+    );
+    const classes = await this.getWritableClassesOrThrow(classIds, currentUser);
+    const primaryClass = classes[0];
 
     const guidance = dto.topicText?.trim()
       ? await this.aiReviewService.generateTopicGuidance({
@@ -53,46 +53,64 @@ export class EssayTasksService {
         })
       : null;
 
-    return this.prisma.essayTask.create({
+    const task = await this.prisma.essayTask.create({
       data: {
-        classId: dto.classId,
+        classId: primaryClass.id,
         teacherId: currentUser.id,
         title: dto.title,
         note: dto.note,
         topicText: dto.topicText?.trim() || null,
         topicGuidance: guidance ?? undefined,
+        classes: {
+          create: classIds.map((classId) => ({ classId })),
+        },
       },
+      include: this.taskListInclude(),
     });
+
+    return this.withTaskClasses(task);
   }
 
-  list(currentUser: CurrentUserType) {
-    return this.prisma.essayTask.findMany({
+  async list(currentUser: CurrentUserType) {
+    const tasks = await this.prisma.essayTask.findMany({
       where:
         currentUser.role === UserRole.ADMIN
-          ? undefined
-          : { teacherId: currentUser.id },
+          ? { deletedAt: null }
+          : { deletedAt: null, teacherId: currentUser.id },
       orderBy: { createdAt: 'desc' },
+      include: this.taskListInclude(),
+    });
+
+    return tasks.map((task) => this.withTaskClasses(task));
+  }
+
+  async getById(id: string, currentUser: CurrentUserType) {
+    const task = await this.prisma.essayTask.findFirst({
+      where: { id, deletedAt: null },
       include: {
         class: {
           select: { id: true, name: true, grade: true },
         },
-      },
-    });
-  }
-
-  async getById(id: string, currentUser: CurrentUserType) {
-    const task = await this.prisma.essayTask.findUnique({
-      where: { id },
-      include: {
-        class: true,
+        classes: {
+          include: {
+            class: {
+              select: { id: true, name: true, grade: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
         teacher: {
           select: { id: true, displayName: true, username: true },
         },
         topicFiles: true,
         submissions: {
+          where: { deletedAt: null },
           include: {
+            class: {
+              select: { id: true, name: true, grade: true },
+            },
             student: {
-              select: { id: true, name: true, studentNo: true },
+              select: { id: true, name: true, studentNo: true, classId: true },
             },
             text: true,
             review: true,
@@ -115,7 +133,7 @@ export class EssayTasksService {
     }
 
     return {
-      ...task,
+      ...this.withTaskClasses(task),
       topicFiles: task.topicFiles.map((file) => ({
         ...file,
         publicUrl: this.filesService.toPublicUrl(file.filePath),
@@ -128,6 +146,37 @@ export class EssayTasksService {
         })),
       })),
     };
+  }
+
+  async update(id: string, dto: UpdateTaskDto, currentUser: CurrentUserType) {
+    await this.getTaskOrThrow(id, currentUser);
+    const task = await this.prisma.essayTask.update({
+      where: { id },
+      data: {
+        ...(dto.title?.trim() ? { title: dto.title.trim() } : {}),
+      },
+      include: this.taskListInclude(),
+    });
+
+    return this.withTaskClasses(task);
+  }
+
+  async remove(id: string, currentUser: CurrentUserType) {
+    const task = await this.getTaskOrThrow(id, currentUser);
+    const deletedAt = new Date();
+
+    await this.prisma.$transaction([
+      this.prisma.submission.updateMany({
+        where: { taskId: task.id, deletedAt: null },
+        data: { deletedAt },
+      }),
+      this.prisma.essayTask.update({
+        where: { id: task.id },
+        data: { deletedAt },
+      }),
+    ]);
+
+    return { deleted: true };
   }
 
   async uploadTopicFile(
@@ -260,8 +309,8 @@ export class EssayTasksService {
   }
 
   private async getTaskOrThrow(taskId: string, currentUser: CurrentUserType) {
-    const task = await this.prisma.essayTask.findUnique({
-      where: { id: taskId },
+    const task = await this.prisma.essayTask.findFirst({
+      where: { id: taskId, deletedAt: null },
     });
 
     if (!task) {
@@ -278,11 +327,84 @@ export class EssayTasksService {
     return task;
   }
 
+  private normalizeClassIds(classIds: Array<string | undefined>) {
+    const normalized = Array.from(
+      new Set(classIds.map((item) => item?.trim()).filter(Boolean)),
+    ) as string[];
+
+    if (!normalized.length) {
+      throw new BadRequestException('请选择至少一个班级');
+    }
+
+    return normalized;
+  }
+
+  private async getWritableClassesOrThrow(
+    classIds: string[],
+    currentUser: CurrentUserType,
+  ) {
+    const classes = await this.prisma.class.findMany({
+      where: { id: { in: classIds } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (classes.length !== classIds.length) {
+      throw new NotFoundException('班级不存在');
+    }
+
+    const forbidden = classes.some(
+      (item) =>
+        currentUser.role !== UserRole.ADMIN && item.teacherId !== currentUser.id,
+    );
+
+    if (forbidden) {
+      throw new ForbiddenException('无权在所选班级创建任务');
+    }
+
+    const currentAcademicYear = getCurrentAcademicYear();
+    const hasHistoricalClass = classes.some(
+      (item) => item.academicYear !== currentAcademicYear,
+    );
+
+    if (hasHistoricalClass) {
+      throw new BadRequestException(
+        `只能在当前学年（${currentAcademicYear}）的班级创建任务`,
+      );
+    }
+
+    return classIds.map((classId) => classes.find((item) => item.id === classId)!);
+  }
+
+  private taskListInclude() {
+    return {
+      class: {
+        select: { id: true, name: true, grade: true },
+      },
+      classes: {
+        include: {
+          class: {
+            select: { id: true, name: true, grade: true },
+          },
+        },
+        orderBy: { createdAt: 'asc' as const },
+      },
+    };
+  }
+
+  private withTaskClasses<T extends TaskWithClassLinks>(task: T) {
+    const classes = task.classes?.map((item) => item.class) ?? [];
+    return {
+      ...task,
+      classes: classes.length ? classes : [task.class].filter(Boolean),
+    };
+  }
+
   private async refreshTaskCounters(taskId: string) {
-    const task = await this.prisma.essayTask.findUnique({
-      where: { id: taskId },
+    const task = await this.prisma.essayTask.findFirst({
+      where: { id: taskId, deletedAt: null },
       include: {
         submissions: {
+          where: { deletedAt: null },
           select: { status: true },
         },
       },

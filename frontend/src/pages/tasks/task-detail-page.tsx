@@ -3,25 +3,38 @@ import {
   ClipboardList,
   Lightbulb,
   ListTree,
+  Pencil,
   Presentation,
-  Upload,
+  X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
 import { apiFetch, uploadFetch } from '../../api/client'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
 import { FilePicker } from '../../components/ui/file-picker'
+import { Input } from '../../components/ui/input'
 import { getSubmissionStatusMeta } from '../../lib/status'
 import { cn, formatDate } from '../../lib/utils'
+import { useTaskPageStore } from '../../stores/task-page-store'
 import type { TaskDetail } from '../../types/api'
 
 export function TaskDetailPage() {
   const { id = '' } = useParams()
   const queryClient = useQueryClient()
+  const getTaskPage = useTaskPageStore((state) => state.getTaskPage)
+  const setTaskPage = useTaskPageStore((state) => state.setTaskPage)
   const [submissionFiles, setSubmissionFiles] = useState<FileList | null>(null)
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(() => getTaskPage(id))
+  const [printMenuOpen, setPrintMenuOpen] = useState(false)
+  const [classModalOpen, setClassModalOpen] = useState(false)
+  const [titleModalOpen, setTitleModalOpen] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [deletingSubmission, setDeletingSubmission] = useState<
+    TaskDetail['submissions'][number] | null
+  >(null)
   const pageSize = 9
 
   const taskQuery = useQuery({
@@ -65,9 +78,68 @@ export function TaskDetailPage() {
     [taskQuery.data],
   )
 
+  const taskClasses = taskQuery.data?.classes?.length
+    ? taskQuery.data.classes
+    : taskQuery.data?.class
+      ? [taskQuery.data.class]
+      : []
+  const classSummary =
+    taskClasses.length === 0
+      ? '--'
+      : taskClasses.length === 1
+        ? taskClasses[0].name
+        : `${taskClasses[0].name}等`
+
+  const updateTaskMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/tasks/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: titleDraft.trim() }),
+      }),
+    onSuccess: async () => {
+      setTitleModalOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['task', id] })
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+
+  const deleteSubmissionMutation = useMutation({
+    mutationFn: () =>
+      deletingSubmission
+        ? apiFetch(`/submissions/${deletingSubmission.id}`, { method: 'DELETE' })
+        : Promise.resolve(),
+    onSuccess: async () => {
+      setDeletingSubmission(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['task', id] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['archive'] }),
+      ])
+    },
+  })
+
   const submissions = taskQuery.data?.submissions ?? []
   const totalPages = Math.max(1, Math.ceil(submissions.length / pageSize))
   const pagedSubmissions = submissions.slice((page - 1) * pageSize, page * pageSize)
+
+  const updatePage = (nextPage: number) => {
+    const normalizedPage = Math.max(1, Math.min(totalPages, nextPage))
+    setPage(normalizedPage)
+    setTaskPage(id, normalizedPage)
+  }
+
+  useEffect(() => {
+    const storedPage = getTaskPage(id)
+    if (page !== storedPage) {
+      setPage(storedPage)
+    }
+  }, [getTaskPage, id])
+
+  useEffect(() => {
+    if (taskQuery.data && page > totalPages) {
+      updatePage(totalPages)
+    }
+  }, [page, taskQuery.data, totalPages])
 
   const guidanceCards = taskQuery.data?.topicGuidance
     ? [
@@ -109,16 +181,42 @@ export function TaskDetailPage() {
             {taskQuery.data?.title ?? '加载中...'}
           </h1>
           <p className="mt-2 text-sm text-stone-500">
-            {taskQuery.data?.class.name} · 共 {taskQuery.data?.totalCount ?? 0} 篇作文
+            {classSummary} · 共 {taskQuery.data?.totalCount ?? 0} 篇作文
             {hasWorkingQueue ? ' · 正在后台批改' : ''}
           </p>
         </div>
-        <Button
-          variant="secondary"
-          onClick={() => window.open(`/print/tasks/${id}`, '_blank')}
-        >
-          批量打印
-        </Button>
+        <div className="relative">
+          <Button
+            variant="secondary"
+            onClick={() => setPrintMenuOpen((open) => !open)}
+          >
+            批量打印
+          </Button>
+          {printMenuOpen ? (
+            <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-stone-200 bg-white py-1 shadow-lg">
+              <button
+                className="block w-full px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-stone-50"
+                type="button"
+                onClick={() => {
+                  setPrintMenuOpen(false)
+                  window.open(`/print/tasks/${id}?mode=detail`, '_blank')
+                }}
+              >
+                详细打印
+              </button>
+              <button
+                className="block w-full px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-stone-50"
+                type="button"
+                onClick={() => {
+                  setPrintMenuOpen(false)
+                  window.open(`/print/tasks/${id}`, '_blank')
+                }}
+              >
+                精简打印
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.92fr_1.28fr]">
@@ -139,17 +237,40 @@ export function TaskDetailPage() {
             </div>
             <div className="mt-5 space-y-4">
               <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
-                <p className="text-sm font-semibold text-stone-500">任务名称</p>
-                <p className="mt-2 text-base font-bold text-ink">
-                  {taskQuery.data?.title ?? '--'}
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-stone-500">任务名称</p>
+                    <p className="mt-2 text-base font-bold text-ink">
+                      {taskQuery.data?.title ?? '--'}
+                    </p>
+                  </div>
+                  {taskQuery.data ? (
+                    <Button
+                      className="h-9 px-3"
+                      variant="secondary"
+                      onClick={() => {
+                        setTitleDraft(taskQuery.data?.title ?? '')
+                        setTitleModalOpen(true)
+                      }}
+                    >
+                      <Pencil className="mr-1.5 size-4" />
+                      编辑
+                    </Button>
+                  ) : null}
+                </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
+                <button
+                  className="block w-full text-left"
+                  type="button"
+                  onClick={() => setClassModalOpen(true)}
+                >
                   <p className="text-sm font-semibold text-stone-500">所属班级</p>
                   <p className="mt-2 text-base font-bold text-ink">
-                    {taskQuery.data?.class.name ?? '--'}
+                    {classSummary}
                   </p>
+                </button>
                 </div>
                 <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
                   <p className="text-sm font-semibold text-stone-500">创建时间</p>
@@ -225,30 +346,19 @@ export function TaskDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <Card className="rounded-xl p-5 shadow-none">
-            <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-accent">
-                <Upload className="size-5" />
-              </span>
-              <div>
-                <h2 className="text-lg font-bold text-ink">批量上传学生作文</h2>
-                <p className="mt-2 text-sm text-stone-500">
-                  可一次选择多篇作文图片或 PDF，系统会自动进入识别与批改流程。
-                </p>
-              </div>
-            </div>
-            <div className="mt-4">
+          <Card className="rounded-xl p-4 shadow-none">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <FilePicker
                 accept=".jpg,.jpeg,.png,.pdf"
                 hint="支持批量上传作文图片或 PDF"
+                hideAction
                 label="选择学生作文文件"
                 multiple
                 value={submissionFiles}
                 onChange={setSubmissionFiles}
               />
-            </div>
-            <div className="mt-4 flex justify-end">
               <Button
+                className="h-12 px-5"
                 disabled={submissionsMutation.isPending || !submissionFiles?.length}
                 onClick={() => submissionsMutation.mutate()}
               >
@@ -270,11 +380,11 @@ export function TaskDetailPage() {
                   <tr>
                     <th className="w-[220px] px-5 py-4 font-medium">文件名</th>
                     <th className="w-[140px] px-5 py-4 font-medium">状态</th>
-                    <th className="px-5 py-4 font-medium">AI评分</th>
+                    <th className="px-5 py-4 font-medium">得分</th>
                     <th className="w-[120px] px-5 py-4 font-medium">文稿情况</th>
                     <th className="px-5 py-4 font-medium">AI 总评</th>
                     <th className="px-5 py-4 font-medium">更新时间</th>
-                    <th className="w-[130px] px-5 py-4 font-medium">操作</th>
+                    <th className="w-[170px] px-5 py-4 font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -347,6 +457,13 @@ export function TaskDetailPage() {
                           >
                             打印
                           </Link>
+                          <button
+                            className="font-semibold text-rose-600"
+                            type="button"
+                            onClick={() => setDeletingSubmission(submission)}
+                          >
+                            删除
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -357,32 +474,185 @@ export function TaskDetailPage() {
             <div className="flex items-center justify-between gap-4 border-t border-stone-100 px-5 py-4">
               <p className="text-sm text-stone-500">每页 {pageSize} 篇</p>
               <div className="flex items-center gap-2">
-                <Button
-                  className="h-10 px-3"
-                  disabled={page <= 1}
-                  variant="secondary"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                >
-                  上一页
-                </Button>
+                  <Button
+                    className="h-10 px-3"
+                    disabled={page <= 1}
+                    variant="secondary"
+                    onClick={() => updatePage(page - 1)}
+                  >
+                    上一页
+                  </Button>
                 <span className="rounded-xl bg-stone-100 px-3 py-2 text-sm font-medium text-stone-600">
                   {page} / {totalPages}
                 </span>
-                <Button
-                  className="h-10 px-3"
-                  disabled={page >= totalPages}
-                  variant="secondary"
-                  onClick={() =>
-                    setPage((current) => Math.min(totalPages, current + 1))
-                  }
-                >
-                  下一页
-                </Button>
+                  <Button
+                    className="h-10 px-3"
+                    disabled={page >= totalPages}
+                    variant="secondary"
+                    onClick={() => updatePage(page + 1)}
+                  >
+                    下一页
+                  </Button>
               </div>
             </div>
           </Card>
         </div>
       </div>
+
+      {classModalOpen
+        ? createPortal(
+            <div
+              aria-modal="true"
+              className="flex items-center justify-center bg-black/45 p-4"
+              role="dialog"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                width: '100vw',
+                height: '100dvh',
+                zIndex: 2147483647,
+              }}
+              onClick={() => setClassModalOpen(false)}
+            >
+              <div
+                className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <h3 className="text-xl font-black text-ink">所属班级</h3>
+                  <button
+                    className="rounded-full p-2 text-stone-400 transition hover:bg-stone-100 hover:text-ink"
+                    type="button"
+                    onClick={() => setClassModalOpen(false)}
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+                <div className="mt-5 space-y-3">
+                  {taskClasses.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm font-semibold text-ink"
+                    >
+                      {item.name}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {titleModalOpen
+        ? createPortal(
+            <div
+              aria-modal="true"
+              className="flex items-center justify-center bg-black/45 p-4"
+              role="dialog"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                width: '100vw',
+                height: '100dvh',
+                zIndex: 2147483647,
+              }}
+            >
+              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+                <div className="flex items-center justify-between gap-4">
+                  <h3 className="text-xl font-black text-ink">编辑任务名称</h3>
+                  <button
+                    className="rounded-full p-2 text-stone-400 transition hover:bg-stone-100 hover:text-ink"
+                    type="button"
+                    onClick={() => setTitleModalOpen(false)}
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+                <div className="mt-5">
+                  <label className="mb-2 block text-sm font-medium text-stone-600">
+                    任务名称
+                  </label>
+                  <Input
+                    value={titleDraft}
+                    onChange={(event) => setTitleDraft(event.target.value)}
+                  />
+                </div>
+                <div className="mt-6 flex justify-end gap-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setTitleModalOpen(false)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    disabled={!titleDraft.trim() || updateTaskMutation.isPending}
+                    onClick={() => updateTaskMutation.mutate()}
+                  >
+                    {updateTaskMutation.isPending ? '保存中...' : '保存'}
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {deletingSubmission
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-950/45 p-4"
+              onMouseDown={() => setDeletingSubmission(null)}
+            >
+              <div
+                className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-rose-600">删除作文</p>
+                    <h2 className="mt-1 text-2xl font-black text-ink">
+                      {deletingSubmission.files[0]?.fileName ??
+                        deletingSubmission.detectedName ??
+                        '未命名文件'}
+                    </h2>
+                  </div>
+                  <button
+                    className="rounded-full p-2 text-stone-400 transition hover:bg-stone-100 hover:text-ink"
+                    type="button"
+                    onClick={() => setDeletingSubmission(null)}
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+                <p className="mt-5 text-sm leading-6 text-stone-600">
+                  是否确定删除该篇作文？
+                </p>
+                {deleteSubmissionMutation.isError ? (
+                  <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {(deleteSubmissionMutation.error as Error).message}
+                  </p>
+                ) : null}
+                <div className="mt-6 flex justify-end gap-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setDeletingSubmission(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    disabled={deleteSubmissionMutation.isPending}
+                    variant="danger"
+                    onClick={() => deleteSubmissionMutation.mutate()}
+                  >
+                    确认删除
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

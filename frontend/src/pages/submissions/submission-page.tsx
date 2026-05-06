@@ -6,13 +6,18 @@ import {
   FileText,
   ImageIcon,
   Lightbulb,
+  ListTree,
   MessageCircleWarning,
+  Pencil,
   Printer,
   RefreshCw,
   Save,
+  SlidersHorizontal,
   Sparkles,
+  X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { apiFetch } from '../../api/client'
 import {
@@ -91,16 +96,85 @@ const quickComments = [
   '鼓励性评语',
 ] as const
 
+const studentNameCollator = new Intl.Collator('zh-Hans-u-co-pinyin', {
+  numeric: true,
+  sensitivity: 'base',
+})
+
+type DimensionKey = 'content' | 'structure' | 'language' | 'idea'
+
+const dimensionMeta: Array<{
+  key: DimensionKey
+  label: string
+  max: number
+  icon: typeof FileText
+  color: string
+}> = [
+  {
+    key: 'content',
+    label: '内容',
+    max: 20,
+    icon: FileText,
+    color: 'bg-blue-50 text-blue-600',
+  },
+  {
+    key: 'structure',
+    label: '结构',
+    max: 10,
+    icon: ListTree,
+    color: 'bg-violet-50 text-violet-600',
+  },
+  {
+    key: 'language',
+    label: '语言',
+    max: 10,
+    icon: MessageCircleWarning,
+    color: 'bg-cyan-50 text-cyan-600',
+  },
+  {
+    key: 'idea',
+    label: '立意',
+    max: 10,
+    icon: Lightbulb,
+    color: 'bg-amber-50 text-amber-600',
+  },
+]
+
+type ScoreDraft = Record<DimensionKey, number>
+
+type AiReviewDraft = {
+  aiSummary: string
+  aiStrengths: string
+  aiIssues: string
+  aiSuggestions: string
+  aiRewriteExample: string
+}
+
 export function SubmissionPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [text, setText] = useState('')
+  const [selectedClassId, setSelectedClassId] = useState('')
   const [studentId, setStudentId] = useState('')
   const [finalComment, setFinalComment] = useState('')
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const [sourceTab, setSourceTab] = useState<'image' | 'text'>('image')
-  const [currentPageIndex, setCurrentPageIndex] = useState(0)
+  const [isScoreModalOpen, setIsScoreModalOpen] = useState(false)
+  const [isAiReviewModalOpen, setIsAiReviewModalOpen] = useState(false)
+  const [sourceTab, setSourceTab] = useState<'image' | 'text'>('text')
+  const [scoreDraft, setScoreDraft] = useState<ScoreDraft>({
+    content: 0,
+    structure: 0,
+    language: 0,
+    idea: 0,
+  })
+  const [aiReviewDraft, setAiReviewDraft] = useState<AiReviewDraft>({
+    aiSummary: '',
+    aiStrengths: '',
+    aiIssues: '',
+    aiSuggestions: '',
+    aiRewriteExample: '',
+  })
   const lastSyncedTextRef = useRef('')
   const [statusFeedback, setStatusFeedback] = useState<{
     tone: 'success' | 'error' | 'info'
@@ -125,13 +199,22 @@ export function SubmissionPage() {
   })
 
   const studentsQuery = useQuery({
-    queryKey: ['students', submissionQuery.data?.task.class.id, 'bind'],
+    queryKey: ['students', selectedClassId, 'bind'],
     queryFn: () =>
       apiFetch<StudentItem[]>(
-        `/students?classId=${submissionQuery.data?.task.class.id ?? ''}`,
+        `/students?classId=${selectedClassId}`,
       ),
-    enabled: !!submissionQuery.data?.task.class.id,
+    enabled: !!selectedClassId,
   })
+  const sortedStudents = useMemo(() => {
+    return [...(studentsQuery.data ?? [])].sort((a, b) => {
+      const nameResult = studentNameCollator.compare(a.name, b.name)
+      if (nameResult !== 0) return nameResult
+      return (a.studentNo ?? '').localeCompare(b.studentNo ?? '', 'zh-Hans', {
+        numeric: true,
+      })
+    })
+  }, [studentsQuery.data])
 
   const remoteText =
     submissionQuery.data?.text?.correctedText?.trim() ||
@@ -139,7 +222,7 @@ export function SubmissionPage() {
     ''
 
   const previewFiles = submissionQuery.data?.files ?? []
-  const previewFile = previewFiles[currentPageIndex] ?? previewFiles[0]
+  const previewFile = previewFiles[0]
   const wordCount = remoteText.replace(/\s/g, '').length
   const essayTitle =
     remoteText
@@ -167,6 +250,33 @@ export function SubmissionPage() {
     language: getDimensionComment('language', score?.language),
     idea: getDimensionComment('idea', score?.idea),
   }
+  const scoreDraftTotal =
+    scoreDraft.content +
+    scoreDraft.structure +
+    scoreDraft.language +
+    scoreDraft.idea
+
+  const openScoreModal = () => {
+    setScoreDraft({
+      content: score?.content ?? 0,
+      structure: score?.structure ?? 0,
+      language: score?.language ?? 0,
+      idea: score?.idea ?? 0,
+    })
+    setIsScoreModalOpen(true)
+  }
+
+  const openAiReviewModal = () => {
+    const review = submissionQuery.data?.review
+    setAiReviewDraft({
+      aiSummary: review?.aiSummary ?? '',
+      aiStrengths: review?.aiStrengths ?? '',
+      aiIssues: review?.aiIssues ?? '',
+      aiSuggestions: review?.aiSuggestions ?? '',
+      aiRewriteExample: review?.aiRewriteExample ?? '',
+    })
+    setIsAiReviewModalOpen(true)
+  }
   const previewTextTitle =
     remoteText
       .split('\n')
@@ -186,6 +296,14 @@ export function SubmissionPage() {
       setText(remoteText)
     }
     lastSyncedTextRef.current = remoteText
+    setSelectedClassId(
+      submissionQuery.data.class?.id ??
+        submissionQuery.data.student?.classId ??
+        (submissionQuery.data.task.classes?.length === 1
+          ? submissionQuery.data.task.classes[0].id
+          : '') ??
+        '',
+    )
     setStudentId(submissionQuery.data.student?.id ?? '')
     setFinalComment(
       submissionQuery.data.review?.finalComment ??
@@ -193,16 +311,6 @@ export function SubmissionPage() {
         '',
     )
   }, [remoteText, submissionQuery.data, text])
-
-  useEffect(() => {
-    setCurrentPageIndex(0)
-  }, [id])
-
-  useEffect(() => {
-    if (currentPageIndex > previewFiles.length - 1) {
-      setCurrentPageIndex(0)
-    }
-  }, [currentPageIndex, previewFiles.length])
 
   useEffect(() => {
     const status = submissionQuery.data?.status
@@ -268,7 +376,10 @@ export function SubmissionPage() {
     mutationFn: () =>
       apiFetch(`/submissions/${id}/student-binding`, {
         method: 'PATCH',
-        body: JSON.stringify({ studentId: studentId || null }),
+        body: JSON.stringify({
+          classId: selectedClassId || null,
+          studentId: studentId || null,
+        }),
       }),
     onSuccess: async () => {
       setActionFeedback({
@@ -329,6 +440,59 @@ export function SubmissionPage() {
     },
   })
 
+  const scoreMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/reviews/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          scoreContent: scoreDraft.content,
+          scoreStructure: scoreDraft.structure,
+          scoreLanguage: scoreDraft.language,
+          scoreIdea: scoreDraft.idea,
+        }),
+      }),
+    onSuccess: async () => {
+      setIsScoreModalOpen(false)
+      setActionFeedback({
+        tone: 'success',
+        message: '评分已更新，四维评语、总分和雷达图已同步刷新。',
+      })
+      await queryClient.invalidateQueries({ queryKey: ['submission', id] })
+      await queryClient.invalidateQueries({ queryKey: ['task'] })
+      await queryClient.invalidateQueries({ queryKey: ['archive'] })
+    },
+    onError: (error) => {
+      setActionFeedback({
+        tone: 'error',
+        message: `保存评分失败：${(error as Error).message}`,
+      })
+    },
+  })
+
+  const aiReviewMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/reviews/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(aiReviewDraft),
+      }),
+    onSuccess: async () => {
+      setIsAiReviewModalOpen(false)
+      setActionFeedback({
+        tone: 'success',
+        message: '结构化评语已更新。',
+      })
+      await queryClient.invalidateQueries({ queryKey: ['submission', id] })
+      await queryClient.invalidateQueries({ queryKey: ['task'] })
+      await queryClient.invalidateQueries({ queryKey: ['archive'] })
+    },
+    onError: (error) => {
+      setActionFeedback({
+        tone: 'error',
+        message: `保存结构化评语失败：${(error as Error).message}`,
+      })
+    },
+  })
+
   const navigation = useMemo(() => {
     const submissions = submissionQuery.data?.task.submissions ?? []
     const currentIndex = submissions.findIndex((item) => item.id === id)
@@ -378,12 +542,10 @@ export function SubmissionPage() {
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-500">
             <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-accent">
-              {submissionQuery.data?.task.class.name ?? '未分班'}
+              {submissionQuery.data?.class?.name ?? '未指定班级'}
             </span>
             <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-accent">
-              {submissionQuery.data?.student?.name ??
-                submissionQuery.data?.detectedName ??
-                '未绑定学生'}
+              {submissionQuery.data?.student?.name ?? '未绑定学生'}
             </span>
             {submissionQuery.data?.student?.studentNo ? (
               <span>学号：{submissionQuery.data.student.studentNo}</span>
@@ -391,12 +553,30 @@ export function SubmissionPage() {
             <span>提交时间：{submissionQuery.data ? formatDate(submissionQuery.data.createdAt ?? '') : '--'}</span>
             <span>字数：{wordCount || '--'} 字</span>
             <select
+              className="h-10 min-w-[180px] rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
+              value={selectedClassId}
+              onChange={(event) => {
+                setSelectedClassId(event.target.value)
+                setStudentId('')
+              }}
+            >
+              <option value="">选择班级</option>
+              {submissionQuery.data?.task.classes?.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <select
               className="h-10 min-w-[220px] rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
+              disabled={!selectedClassId}
               value={studentId}
               onChange={(event) => setStudentId(event.target.value)}
             >
-              <option value="">暂不绑定学生</option>
-              {studentsQuery.data?.map((item) => (
+              <option value="">
+                {selectedClassId ? '暂不绑定学生' : '请先选择班级'}
+              </option>
+              {sortedStudents.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name} {item.studentNo ? `(${item.studentNo})` : ''}
                 </option>
@@ -451,18 +631,6 @@ export function SubmissionPage() {
               <div className="flex rounded-xl bg-stone-100 p-1">
                 <button
                   className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                    sourceTab === 'image'
-                      ? 'bg-white text-accent shadow-sm'
-                      : 'text-stone-500'
-                  }`}
-                  type="button"
-                  onClick={() => setSourceTab('image')}
-                >
-                  <ImageIcon className="mr-1 inline size-4" />
-                  原稿图片
-                </button>
-                <button
-                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                     sourceTab === 'text'
                       ? 'bg-white text-accent shadow-sm'
                       : 'text-stone-500'
@@ -473,6 +641,18 @@ export function SubmissionPage() {
                   <FileText className="mr-1 inline size-4" />
                   提取文字
                 </button>
+                <button
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    sourceTab === 'image'
+                      ? 'bg-white text-accent shadow-sm'
+                      : 'text-stone-500'
+                  }`}
+                  type="button"
+                  onClick={() => setSourceTab('image')}
+                >
+                  <ImageIcon className="mr-1 inline size-4" />
+                  原稿图片
+                </button>
               </div>
             </div>
           </div>
@@ -480,41 +660,19 @@ export function SubmissionPage() {
           <div className="p-5">
             {sourceTab === 'image' ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-500">
-                  <div className="font-semibold text-ink">
-                    {previewFiles.length ? `${currentPageIndex + 1} / ${previewFiles.length}` : '0 / 0'}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      disabled={currentPageIndex === 0}
-                      onClick={() =>
-                        setCurrentPageIndex((current) => Math.max(0, current - 1))
-                      }
-                    >
-                      <ChevronLeft className="size-4" />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      disabled={currentPageIndex >= previewFiles.length - 1}
-                      onClick={() =>
-                        setCurrentPageIndex((current) =>
-                          Math.min(previewFiles.length - 1, current + 1),
-                        )
-                      }
-                    >
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-
                 <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                   {previewFile?.fileType === 'PDF' ? (
-                    <iframe
-                      className="h-[700px] w-full rounded-xl bg-white"
-                      src={assetUrl(previewFile.publicUrl)}
-                      title="作文预览"
-                    />
+                    <button
+                      className="block w-full cursor-zoom-in rounded-xl bg-white p-2"
+                      type="button"
+                      onClick={() => setIsPreviewOpen(true)}
+                    >
+                      <iframe
+                        className="pointer-events-none h-[700px] w-full rounded-xl bg-white"
+                        src={assetUrl(previewFile.publicUrl)}
+                        title="作文预览"
+                      />
+                    </button>
                   ) : previewFile ? (
                     <button
                       className="block w-full cursor-zoom-in rounded-xl bg-white p-2"
@@ -533,28 +691,6 @@ export function SubmissionPage() {
                     </div>
                   )}
                 </div>
-
-                {previewFiles.length > 1 ? (
-                  <div className="flex gap-3 overflow-x-auto pb-1">
-                    {previewFiles.map((file, index) => (
-                      <button
-                        key={file.id}
-                        className={`min-w-[84px] rounded-xl border p-2 text-center transition ${
-                          index === currentPageIndex
-                            ? 'border-accent bg-blue-50'
-                            : 'border-stone-200 bg-white'
-                        }`}
-                        type="button"
-                        onClick={() => setCurrentPageIndex(index)}
-                      >
-                        <div className="flex h-[92px] items-center justify-center rounded-xl bg-stone-50 text-xs text-stone-400">
-                          {file.fileType === 'PDF' ? 'PDF' : '第 ' + (index + 1) + ' 页'}
-                        </div>
-                        <p className="mt-2 text-sm font-medium text-stone-500">{index + 1}</p>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             ) : (
               <div className="space-y-4">
@@ -578,35 +714,23 @@ export function SubmissionPage() {
                     </div>
                   </div>
                 </div>
-                <Textarea
-                  className="min-h-[240px] rounded-xl border-stone-200"
-                  placeholder="如果识别结果不完整或失败，可在这里补录或修正文稿。"
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                />
               </div>
             )}
-            <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-stone-100 pt-4">
-              <Button
-                variant="secondary"
-                disabled={saveTextMutation.isPending || text.trim().length < 20}
-                onClick={() => saveTextMutation.mutate()}
-              >
-                <Save className="mr-2 size-4" />
-                保存正文
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={
-                  reviewMutation.isPending ||
-                  submissionQuery.data?.status === 'TEXT_EXTRACTING' ||
-                  text.trim().length < 20
-                }
-                onClick={() => reviewMutation.mutate()}
-              >
-                <RefreshCw className="mr-2 size-4" />
-                重新生成评语
-              </Button>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-4">
+              {sourceTab === 'image' ? (
+                <p className="text-sm text-stone-500">
+                  点击图片可放大并进入对照校对模式。
+                </p>
+              ) : (
+                <Button
+                  disabled={!previewFile}
+                  variant="secondary"
+                  onClick={() => setIsPreviewOpen(true)}
+                >
+                  <ImageIcon className="mr-2 size-4" />
+                  打开校对窗口
+                </Button>
+              )}
             </div>
           </div>
         </Card>
@@ -624,7 +748,20 @@ export function SubmissionPage() {
               </p>
             </div>
           </Card>
-          <ReviewDimensionCards comments={dimensionComments} score={score} />
+          <ReviewDimensionCards
+            comments={dimensionComments}
+            score={score}
+            action={
+              <Button
+                className="h-9 px-3"
+                variant="secondary"
+                onClick={openScoreModal}
+              >
+                <SlidersHorizontal className="mr-1.5 size-4" />
+                调整分数
+              </Button>
+            }
+          />
           <Card className="rounded-xl p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -652,13 +789,19 @@ export function SubmissionPage() {
           <Card className="rounded-xl">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-lg font-bold text-ink">AI 智能评语</h3>
-              <Button
-                variant="secondary"
-                onClick={() => window.open(`/print/submissions/${id}`, '_blank')}
-              >
-                <Printer className="mr-2 size-4" />
-                打印
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={openAiReviewModal}>
+                  <Pencil className="mr-2 size-4" />
+                  编辑
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => window.open(`/print/submissions/${id}`, '_blank')}
+                >
+                  <Printer className="mr-2 size-4" />
+                  打印
+                </Button>
+              </div>
             </div>
             <div className="mt-5 space-y-4">
               <section className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
@@ -727,21 +870,334 @@ export function SubmissionPage() {
         </div>
       </div>
 
-      {isPreviewOpen && previewFile && previewFile.fileType !== 'PDF' ? (
+      {isScoreModalOpen
+        ? createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          role="dialog"
           aria-modal="true"
+          className="flex items-center justify-center bg-black/45 p-4"
+          role="dialog"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            zIndex: 2147483647,
+          }}
+          onClick={() => setIsScoreModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-ink">调整分数</h3>
+                <p className="mt-2 text-sm text-stone-500">
+                  只能调整四个维度分数，总分会由系统自动相加。
+                </p>
+              </div>
+              <button
+                className="rounded-full p-2 text-stone-400 transition hover:bg-stone-100 hover:text-ink"
+                type="button"
+                onClick={() => setIsScoreModalOpen(false)}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+              <p className="text-sm font-semibold text-stone-500">当前总分</p>
+              <p className="mt-1 text-4xl font-black leading-none text-accent">
+                {scoreDraftTotal}
+              </p>
+            </div>
+
+            <div className="mt-6 space-y-5">
+              {dimensionMeta.map((item) => {
+                const value = scoreDraft[item.key]
+                const Icon = item.icon
+                return (
+                  <div key={item.key} className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.color}`}
+                        >
+                          <Icon className="size-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-ink">{item.label}</p>
+                          <p className="mt-1 text-sm text-stone-500">
+                            {getDimensionComment(item.key, value)}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-2xl font-black text-accent">
+                        {value}
+                        <span className="ml-1 text-sm font-semibold text-stone-400">
+                          / {item.max}
+                        </span>
+                      </p>
+                    </div>
+                    <input
+                      className="mt-4 w-full accent-blue-600"
+                      max={item.max}
+                      min={0}
+                      step={1}
+                      type="range"
+                      value={value}
+                      onChange={(event) =>
+                        setScoreDraft((current) => ({
+                          ...current,
+                          [item.key]: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setIsScoreModalOpen(false)}>
+                取消
+              </Button>
+              <Button
+                disabled={scoreMutation.isPending}
+                onClick={() => scoreMutation.mutate()}
+              >
+                {scoreMutation.isPending ? '保存中...' : '保存分数'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+          document.body,
+        )
+        : null}
+
+      {isAiReviewModalOpen
+        ? createPortal(
+        <div
+          aria-modal="true"
+          className="flex items-center justify-center bg-black/45 p-4"
+          role="dialog"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            zIndex: 2147483647,
+          }}
+        >
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-ink">编辑结构化评语</h3>
+              </div>
+              <button
+                className="rounded-full p-2 text-stone-400 transition hover:bg-stone-100 hover:text-ink"
+                type="button"
+                onClick={() => setIsAiReviewModalOpen(false)}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <label className="block">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <span className="h-4 w-1 rounded-full bg-accent" />
+                  AI 总评
+                </span>
+                <Textarea
+                  className="mt-2 min-h-[96px] rounded-xl border-stone-200"
+                  value={aiReviewDraft.aiSummary}
+                  onChange={(event) =>
+                    setAiReviewDraft((current) => ({
+                      ...current,
+                      aiSummary: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <span className="h-4 w-1 rounded-full bg-accent" />
+                  亮点概述
+                </span>
+                <Textarea
+                  className="mt-2 min-h-[96px] rounded-xl border-stone-200"
+                  value={aiReviewDraft.aiStrengths}
+                  onChange={(event) =>
+                    setAiReviewDraft((current) => ({
+                      ...current,
+                      aiStrengths: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <span className="h-4 w-1 rounded-full bg-accent" />
+                  存在问题
+                </span>
+                <Textarea
+                  className="mt-2 min-h-[96px] rounded-xl border-stone-200"
+                  value={aiReviewDraft.aiIssues}
+                  onChange={(event) =>
+                    setAiReviewDraft((current) => ({
+                      ...current,
+                      aiIssues: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <span className="h-4 w-1 rounded-full bg-accent" />
+                  修改建议
+                </span>
+                <Textarea
+                  className="mt-2 min-h-[120px] rounded-xl border-stone-200"
+                  value={aiReviewDraft.aiSuggestions}
+                  onChange={(event) =>
+                    setAiReviewDraft((current) => ({
+                      ...current,
+                      aiSuggestions: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <span className="h-4 w-1 rounded-full bg-accent" />
+                  参考修改
+                </span>
+                <Textarea
+                  className="mt-2 min-h-[120px] rounded-xl border-stone-200"
+                  value={aiReviewDraft.aiRewriteExample}
+                  onChange={(event) =>
+                    setAiReviewDraft((current) => ({
+                      ...current,
+                      aiRewriteExample: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setIsAiReviewModalOpen(false)}
+              >
+                取消
+              </Button>
+              <Button
+                disabled={aiReviewMutation.isPending}
+                onClick={() => aiReviewMutation.mutate()}
+              >
+                {aiReviewMutation.isPending ? '保存中...' : '保存评语'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+          document.body,
+        )
+        : null}
+
+      {isPreviewOpen && previewFile
+        ? createPortal(
+        <div
+          aria-modal="true"
+          className="overflow-hidden bg-black/75 p-3 sm:p-4"
+          role="dialog"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            zIndex: 2147483647,
+          }}
           onClick={() => setIsPreviewOpen(false)}
         >
-          <img
-            alt="作文原稿放大预览"
-            className="max-h-[92vh] max-w-[96vw] rounded-xl bg-white object-contain shadow-2xl"
-            src={assetUrl(previewFile.publicUrl)}
+          <div
+            className="mx-auto h-full max-w-[1600px] overflow-hidden rounded-2xl bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
-          />
-        </div>
-      ) : null}
+          >
+            <div className="grid h-full min-h-0 gap-4 bg-stone-100 p-3 lg:grid-cols-[minmax(0,4fr)_minmax(260px,1fr)] xl:grid-cols-[minmax(0,4fr)_minmax(300px,1fr)]">
+              <div className="min-h-[42vh] overflow-auto rounded-xl border border-stone-200 bg-stone-50 p-3 lg:min-h-0">
+                {previewFile.fileType === 'PDF' ? (
+                  <iframe
+                    className="h-full min-h-[66vh] w-full rounded-xl bg-white lg:min-h-full"
+                    src={assetUrl(previewFile.publicUrl)}
+                    title="作文原稿校对"
+                  />
+                ) : (
+                  <div className="flex min-h-full items-start justify-center rounded-xl bg-white p-2">
+                    <img
+                      alt="作文原稿校对"
+                      className="max-w-full rounded-lg object-contain"
+                      src={assetUrl(previewFile.publicUrl)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <aside className="flex min-h-[320px] flex-col rounded-xl border border-stone-200 bg-white p-4 lg:min-h-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-bold text-ink">识别正文</h4>
+                    <p className="mt-1 text-sm text-stone-500">
+                      当前 {text.replace(/\s/g, '').length || 0} 字
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      text.trim().length >= 20
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {text.trim().length >= 20 ? '可保存' : '需补全文字'}
+                  </span>
+                </div>
+
+                <Textarea
+                  className="mt-4 min-h-[260px] flex-1 resize-none rounded-xl border-stone-200 text-sm leading-7 lg:min-h-0"
+                  placeholder="对照左侧原稿，在这里修正 OCR 识别正文。"
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                />
+
+                <div className="mt-4 grid gap-2">
+                  <Button
+                    disabled={saveTextMutation.isPending || text.trim().length < 20}
+                    onClick={() => saveTextMutation.mutate()}
+                  >
+                    <Save className="mr-2 size-4" />
+                    {saveTextMutation.isPending ? '保存中...' : '保存正文'}
+                  </Button>
+                  <Button
+                    disabled={
+                      reviewMutation.isPending ||
+                      submissionQuery.data?.status === 'TEXT_EXTRACTING' ||
+                      text.trim().length < 20
+                    }
+                    variant="secondary"
+                    onClick={() => reviewMutation.mutate()}
+                  >
+                    <RefreshCw className="mr-2 size-4" />
+                    {reviewMutation.isPending ? '提交中...' : '重新生成评语'}
+                  </Button>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>,
+          document.body,
+        )
+        : null}
     </div>
   )
 }

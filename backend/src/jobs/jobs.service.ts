@@ -33,6 +33,8 @@ export class JobsService implements OnModuleInit {
   async onModuleInit() {
     const resumable = await this.prisma.submission.findMany({
       where: {
+        deletedAt: null,
+        task: { deletedAt: null },
         status: {
           in: [
             SubmissionStatus.TEXT_EXTRACTING,
@@ -111,8 +113,8 @@ export class JobsService implements OnModuleInit {
 
   private async processSubmissionOcr(submissionId: string) {
     try {
-      const submission = await this.prisma.submission.findUnique({
-        where: { id: submissionId },
+      const submission = await this.prisma.submission.findFirst({
+        where: { id: submissionId, deletedAt: null, task: { deletedAt: null } },
         include: {
           files: {
             orderBy: { createdAt: 'asc' },
@@ -181,8 +183,8 @@ export class JobsService implements OnModuleInit {
         data: { status: SubmissionStatus.FAILED },
       });
     } finally {
-      const submission = await this.prisma.submission.findUnique({
-        where: { id: submissionId },
+      const submission = await this.prisma.submission.findFirst({
+        where: { id: submissionId, deletedAt: null, task: { deletedAt: null } },
         select: { taskId: true },
       });
       if (submission) {
@@ -193,8 +195,8 @@ export class JobsService implements OnModuleInit {
 
   private async processSubmissionReview(submissionId: string) {
     try {
-      const submission = await this.prisma.submission.findUnique({
-        where: { id: submissionId },
+      const submission = await this.prisma.submission.findFirst({
+        where: { id: submissionId, deletedAt: null, task: { deletedAt: null } },
         include: {
           task: {
             include: {
@@ -232,6 +234,7 @@ export class JobsService implements OnModuleInit {
       const review = await this.aiReviewService.generateEssayReview({
         taskTitle: submission.task.title,
         topicText: submission.task.topicText,
+        topicGuidance: submission.task.topicGuidance as Record<string, unknown> | null,
         studentName: submission.student?.name ?? submission.detectedName,
         className: submission.task.class.name,
         essayText,
@@ -279,8 +282,8 @@ export class JobsService implements OnModuleInit {
         data: { status: SubmissionStatus.FAILED },
       });
     } finally {
-      const submission = await this.prisma.submission.findUnique({
-        where: { id: submissionId },
+      const submission = await this.prisma.submission.findFirst({
+        where: { id: submissionId, deletedAt: null, task: { deletedAt: null } },
         select: { taskId: true },
       });
       if (submission) {
@@ -294,10 +297,11 @@ export class JobsService implements OnModuleInit {
   }
 
   private async refreshTaskStatus(taskId: string) {
-    const task = await this.prisma.essayTask.findUnique({
-      where: { id: taskId },
+    const task = await this.prisma.essayTask.findFirst({
+      where: { id: taskId, deletedAt: null },
       include: {
         submissions: {
+          where: { deletedAt: null },
           select: { status: true },
         },
       },

@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseFilePipeBuilder,
+  Patch,
   Post,
   UploadedFile,
   UploadedFiles,
@@ -16,6 +18,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { CurrentUserType } from '../common/types/current-user.type';
 import { CreateTaskDto } from './dto/create-task.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
 import { EssayTasksService } from './essay-tasks.service';
 
 @UseGuards(JwtAuthGuard)
@@ -42,6 +45,23 @@ export class EssayTasksController {
     @CurrentUser() currentUser: CurrentUserType,
   ) {
     return this.essayTasksService.getById(id, currentUser);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTaskDto,
+    @CurrentUser() currentUser: CurrentUserType,
+  ) {
+    return this.essayTasksService.update(id, dto, currentUser);
+  }
+
+  @Delete(':id')
+  remove(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: CurrentUserType,
+  ) {
+    return this.essayTasksService.remove(id, currentUser);
   }
 
   @Post(':id/topic-files')

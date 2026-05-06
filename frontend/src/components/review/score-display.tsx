@@ -1,4 +1,5 @@
 import { BookText, FileText, MessageSquareText, Network } from 'lucide-react'
+import type { ReactNode } from 'react'
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -78,10 +79,14 @@ export function ReviewScorePill({
   score,
   className,
   compact = false,
+  label = '得分',
+  showMax = true,
 }: {
   score?: ReviewScore | null
   className?: string
   compact?: boolean
+  label?: string | null
+  showMax?: boolean
 }) {
   return (
     <div
@@ -93,24 +98,29 @@ export function ReviewScorePill({
       )}
     >
       <div>
+        {label ? (
+          <p
+            className={cn(
+              'text-[11px] font-semibold uppercase tracking-[0.18em]',
+              compact && 'text-[10px]',
+            )}
+          >
+            {label}
+          </p>
+        ) : null}
         <p
           className={cn(
-            'text-[11px] font-semibold uppercase tracking-[0.18em]',
-            compact && 'text-[10px]',
-          )}
-        >
-          AI评分
-        </p>
-        <p
-          className={cn(
-            'mt-1 text-3xl font-black leading-none',
+            label && 'mt-1',
+            'text-3xl font-black leading-none',
             compact && 'text-xl',
           )}
         >
           {score?.total == null ? '--' : score.total}
-          <span className={cn('ml-1 text-sm font-semibold', compact && 'text-xs')}>
-            /50
-          </span>
+          {showMax ? (
+            <span className={cn('ml-1 text-sm font-semibold', compact && 'text-xs')}>
+              /50
+            </span>
+          ) : null}
         </p>
       </div>
     </div>
@@ -215,10 +225,12 @@ export function ReviewDimensionCards({
   score,
   comments,
   className,
+  action,
 }: {
   score?: ReviewScore | null
   comments: Record<'content' | 'structure' | 'language' | 'idea', string>
   className?: string
+  action?: ReactNode
 }) {
   return (
     <section
@@ -227,7 +239,10 @@ export function ReviewDimensionCards({
         className,
       )}
     >
-      <h3 className="text-lg font-bold text-ink">四个维度评语</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold text-ink">四个维度评语</h3>
+        {action}
+      </div>
       <div className="mt-4 space-y-3">
         {dimensionConfig.map((item) => {
           const Icon = item.icon

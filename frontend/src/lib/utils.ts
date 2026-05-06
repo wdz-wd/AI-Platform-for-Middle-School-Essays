@@ -17,7 +17,7 @@ export function assetUrl(path: string) {
     return path
   }
 
-  const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api'
-  const origin = new URL(base).origin
+  const base = import.meta.env.VITE_API_BASE_URL
+  const origin = base ? new URL(base).origin : window.location.origin
   return `${origin}${path}`
 }
