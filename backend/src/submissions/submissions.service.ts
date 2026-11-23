@@ -9,6 +9,7 @@ import type { CurrentUserType } from '../common/types/current-user.type';
 import { FilesService } from '../files/files.service';
 import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { rankStudentCandidates } from '../text-extraction/ocr-student-match';
 import { BindStudentDto } from './dto/bind-student.dto';
 import { UpdateSubmissionTextDto } from './dto/update-submission-text.dto';
 
@@ -63,8 +64,9 @@ export class SubmissionsService {
       throw new ForbiddenException('无权访问该作文');
     }
 
+    const { ocrProgress: _ocrProgress, ...publicSubmission } = submission;
     return {
-      ...submission,
+      ...publicSubmission,
       task: {
         ...submission.task,
         classes:
@@ -111,6 +113,36 @@ export class SubmissionsService {
         studentId: dto.studentId ?? null,
       },
     });
+  }
+
+  async getStudentCandidates(id: string, currentUser: CurrentUserType) {
+    const submission = await this.getById(id, currentUser);
+    const ocrName = submission.ocrHeaderName;
+    if (!ocrName) return { ocrName: null, candidates: [] };
+
+    const classIds = submission.task.classes.map((item) => item.id);
+    const students = await this.prisma.student.findMany({
+      where: { classId: { in: classIds }, status: 'ACTIVE' },
+      select: {
+        id: true,
+        name: true,
+        studentNo: true,
+        classId: true,
+        class: { select: { id: true, name: true } },
+      },
+    });
+    const candidates = rankStudentCandidates(ocrName, students).map(
+      ({ student, score, reason }) => ({
+        id: student.id,
+        name: student.name,
+        studentNo: student.studentNo,
+        classId: student.classId,
+        className: student.class.name,
+        score,
+        reason,
+      }),
+    );
+    return { ocrName, candidates };
   }
 
   async updateText(
@@ -163,6 +195,26 @@ export class SubmissionsService {
     });
 
     this.jobsService.enqueueSubmissionReview(id);
+    return { queued: true };
+  }
+
+  async retryOcr(id: string, currentUser: CurrentUserType) {
+    const submission = await this.getById(id, currentUser);
+    if (submission.status === SubmissionStatus.TEXT_EXTRACTING)
+      return { queued: true };
+    if (submission.status !== SubmissionStatus.FAILED) {
+      throw new BadRequestException('只有识别或批阅失败的作文可以续接识别');
+    }
+    await this.prisma.submission.update({
+      where: { id },
+      data: {
+        status: SubmissionStatus.TEXT_EXTRACTING,
+        ocrRetryCount: 0,
+        ocrNextRetryAt: null,
+        ocrLastError: null,
+      },
+    });
+    this.jobsService.enqueueSubmissionOcr(id);
     return { queued: true };
   }
 

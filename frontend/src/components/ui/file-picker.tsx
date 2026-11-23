@@ -41,7 +41,7 @@ export function FilePicker({
         )}
         htmlFor={inputId}
       >
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-accent shadow-sm transition group-hover:scale-105">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-accent">
           <UploadCloud className="size-5" />
         </span>
         <span className="min-w-0 flex-1">
@@ -51,7 +51,7 @@ export function FilePicker({
           </span>
         </span>
         {hideAction ? null : (
-          <span className="rounded-xl bg-accent px-3 py-2 text-xs font-bold text-white shadow-sm">
+          <span className="rounded-xl bg-accent px-3 py-2 text-xs font-bold text-white">
             选择文件
           </span>
         )}

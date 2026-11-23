@@ -1,10 +1,21 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { SubmissionStatus, TaskStatus } from '@prisma/client';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { Prisma, SubmissionStatus, TaskStatus } from '@prisma/client';
 import { readFile } from 'node:fs/promises';
 import { AiReviewService } from '../ai-review/ai-review.service';
 import { FilesService } from '../files/files.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  extractOcrHeaderName,
+  rankStudentCandidates,
+} from '../text-extraction/ocr-student-match';
 import { TextExtractionService } from '../text-extraction/text-extraction.service';
+import { PaddleOcrCheckpoint } from '../text-extraction/paddle-ocr.service';
+import { OcrRetryableError } from '../text-extraction/ocr-retryable.error';
 
 type JobItem =
   | {
@@ -16,12 +27,42 @@ type JobItem =
       submissionId: string;
     };
 
+type JobKind = JobItem['kind'];
+type JobQueue = {
+  pending: JobItem[];
+  active: Set<string>;
+  concurrency: number;
+};
+
+type StudentMatchSubmission = {
+  id: string;
+  classId: string | null;
+  studentId: string | null;
+  task: {
+    classId: string;
+    classes: Array<{ classId: string }>;
+  };
+};
+
 @Injectable()
-export class JobsService implements OnModuleInit {
+export class JobsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(JobsService.name);
-  private readonly queue: JobItem[] = [];
-  private readonly active = new Set<string>();
-  private readonly concurrency = 2;
+  private readonly queues: Record<JobKind, JobQueue> = {
+    ocr: this.createQueue('OCR_CONCURRENCY'),
+    review: this.createQueue('REVIEW_CONCURRENCY'),
+  };
+  private readonly delayedOcr = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly autoRetryLimit = this.retrySetting(
+    'OCR_AUTO_RETRY_MAX_ATTEMPTS',
+    10,
+  );
+  private readonly autoRetryBaseMs = this.retrySetting(
+    'OCR_AUTO_RETRY_BASE_MS',
+    60000,
+  );
 
   constructor(
     private readonly prisma: PrismaService,
@@ -46,23 +87,65 @@ export class JobsService implements OnModuleInit {
       select: {
         id: true,
         status: true,
+        ocrNextRetryAt: true,
       },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
     for (const submission of resumable) {
       if (submission.status === SubmissionStatus.TEXT_EXTRACTING) {
-        this.enqueueSubmissionOcr(submission.id);
+        if (
+          submission.ocrNextRetryAt &&
+          submission.ocrNextRetryAt.getTime() > Date.now()
+        ) {
+          this.scheduleOcrRetry(submission.id, submission.ocrNextRetryAt);
+        } else {
+          this.enqueueSubmissionOcr(submission.id);
+        }
       } else {
         this.enqueueSubmissionReview(submission.id);
       }
     }
+
+    try {
+      await this.bindPreviouslyUnboundStudents();
+    } catch (error) {
+      this.logger.warn(`已有作文学生匹配暂未完成: ${String(error)}`);
+    }
   }
 
   enqueueSubmissionOcr(submissionId: string) {
+    const timer = this.delayedOcr.get(submissionId);
+    if (timer) clearTimeout(timer);
+    this.delayedOcr.delete(submissionId);
     this.enqueue({
       kind: 'ocr',
       submissionId,
     });
+  }
+
+  onModuleDestroy() {
+    for (const timer of this.delayedOcr.values()) clearTimeout(timer);
+    this.delayedOcr.clear();
+  }
+
+  private retrySetting(name: string, fallback: number) {
+    const value = Number(process.env[name]);
+    return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+  }
+
+  private scheduleOcrRetry(submissionId: string, when: Date) {
+    const previous = this.delayedOcr.get(submissionId);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(
+      () => {
+        this.delayedOcr.delete(submissionId);
+        this.enqueueSubmissionOcr(submissionId);
+      },
+      Math.max(0, when.getTime() - Date.now()),
+    );
+    timer.unref?.();
+    this.delayedOcr.set(submissionId, timer);
   }
 
   enqueueSubmissionReview(submissionId: string) {
@@ -73,33 +156,53 @@ export class JobsService implements OnModuleInit {
   }
 
   private enqueue(job: JobItem) {
+    const queue = this.queues[job.kind];
     const jobKey = this.getJobKey(job);
-    const queuedAlready = this.queue.some(
+    const queuedAlready = queue.pending.some(
       (queuedJob) => this.getJobKey(queuedJob) === jobKey,
     );
 
-    if (queuedAlready || this.active.has(jobKey)) {
+    if (queuedAlready || queue.active.has(jobKey)) {
       return;
     }
 
-    this.queue.push(job);
-    void this.kick();
+    queue.pending.push(job);
+    this.kick(job.kind);
   }
 
-  private async kick() {
-    while (this.active.size < this.concurrency && this.queue.length > 0) {
-      const job = this.queue.shift();
+  private kick(kind: JobKind) {
+    const queue = this.queues[kind];
+    while (queue.active.size < queue.concurrency && queue.pending.length > 0) {
+      const job = queue.pending.shift();
       if (!job) {
         return;
       }
 
       const jobKey = this.getJobKey(job);
-      this.active.add(jobKey);
-      void this.processJob(job).finally(() => {
-        this.active.delete(jobKey);
-        void this.kick();
-      });
+      queue.active.add(jobKey);
+      void this.processJob(job)
+        .catch((error: unknown) => {
+          this.logger.error(`后台任务异常: ${jobKey}`, error);
+        })
+        .finally(() => {
+          queue.active.delete(jobKey);
+          this.kick(kind);
+        });
     }
+  }
+
+  private createQueue(variable: string): JobQueue {
+    const raw = process.env[variable];
+    const value = raw?.trim() ? Number(raw) : 2;
+    const valid = Number.isSafeInteger(value) && value > 0;
+    if (!valid) {
+      this.logger.warn(`${variable} 必须为正整数，使用默认并发数 2`);
+    }
+    return {
+      pending: [],
+      active: new Set<string>(),
+      concurrency: valid ? value : 2,
+    };
   }
 
   private async processJob(job: JobItem) {
@@ -112,10 +215,17 @@ export class JobsService implements OnModuleInit {
   }
 
   private async processSubmissionOcr(submissionId: string) {
+    let retryCount = 0;
     try {
       const submission = await this.prisma.submission.findFirst({
         where: { id: submissionId, deletedAt: null, task: { deletedAt: null } },
         include: {
+          task: {
+            select: {
+              classId: true,
+              classes: { select: { classId: true } },
+            },
+          },
           files: {
             orderBy: { createdAt: 'asc' },
             take: 1,
@@ -128,10 +238,24 @@ export class JobsService implements OnModuleInit {
       if (!submission || !file) {
         return;
       }
+      if (
+        submission.status &&
+        submission.status !== SubmissionStatus.TEXT_EXTRACTING &&
+        submission.status !== SubmissionStatus.UPLOADED
+      )
+        return;
+      retryCount = submission.ocrRetryCount ?? 0;
+      const progress = (submission.ocrProgress ?? {}) as unknown as Record<
+        string,
+        PaddleOcrCheckpoint
+      >;
 
       await this.prisma.submission.update({
         where: { id: submissionId },
-        data: { status: SubmissionStatus.TEXT_EXTRACTING },
+        data: {
+          status: SubmissionStatus.TEXT_EXTRACTING,
+          ocrNextRetryAt: null,
+        },
       });
       await this.refreshTaskStatus(submission.taskId);
 
@@ -142,7 +266,19 @@ export class JobsService implements OnModuleInit {
           kind: file.fileType,
           buffer,
         },
-        { waitForOcr: true },
+        {
+          waitForOcr: true,
+          ocrProgress: progress,
+          onOcrProgress: async (stage, checkpoint) => {
+            progress[stage] = checkpoint;
+            await this.prisma.submission.update({
+              where: { id: submissionId },
+              data: {
+                ocrProgress: progress as unknown as Prisma.InputJsonValue,
+              },
+            });
+          },
+        },
       );
 
       await this.prisma.submissionText.upsert({
@@ -154,14 +290,19 @@ export class JobsService implements OnModuleInit {
         },
         update: {
           ocrText: extracted.text || null,
-          correctedText: {
-            set:
-              submission.text?.correctedText && submission.text.correctedText.trim()
-                ? submission.text.correctedText
-                : null,
-          },
         },
       });
+
+      const ocrHeaderName =
+        extracted.ocrHeaderName ??
+        extractOcrHeaderName(extracted.ocrRawText ?? '');
+      if (ocrHeaderName) {
+        try {
+          await this.bindTopStudentCandidate(submission, ocrHeaderName);
+        } catch (error) {
+          this.logger.warn(`OCR 姓名匹配失败，保留人工绑定: ${String(error)}`);
+        }
+      }
 
       const nextStatus =
         extracted.text.trim().length >= 20
@@ -170,18 +311,53 @@ export class JobsService implements OnModuleInit {
 
       await this.prisma.submission.update({
         where: { id: submissionId },
-        data: { status: nextStatus },
+        data: {
+          status: nextStatus,
+          ocrHeaderName,
+          ocrRetryCount: 0,
+          ocrNextRetryAt: null,
+          ocrLastError: null,
+        },
       });
 
       if (nextStatus === SubmissionStatus.TEXT_READY) {
         this.enqueueSubmissionReview(submissionId);
       }
     } catch (error) {
-      this.logger.error(`OCR 任务失败: ${submissionId}`, error);
-      await this.prisma.submission.update({
-        where: { id: submissionId },
-        data: { status: SubmissionStatus.FAILED },
-      });
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        error instanceof OcrRetryableError &&
+        retryCount < this.autoRetryLimit
+      ) {
+        const delay = Math.min(
+          this.autoRetryBaseMs * 2 ** Math.min(retryCount, 16),
+          900000,
+        );
+        const when = new Date(Date.now() + delay);
+        await this.prisma.submission.update({
+          where: { id: submissionId },
+          data: {
+            status: SubmissionStatus.TEXT_EXTRACTING,
+            ocrRetryCount: retryCount + 1,
+            ocrNextRetryAt: when,
+            ocrLastError: message,
+          },
+        });
+        this.scheduleOcrRetry(submissionId, when);
+        this.logger.warn(
+          `OCR 暂停并等待续接: ${submissionId}；${Math.ceil(delay / 1000)} 秒后自动重试（${retryCount + 1}/${this.autoRetryLimit}）：${message}`,
+        );
+      } else {
+        this.logger.error(`OCR 任务失败: ${submissionId}`, error);
+        await this.prisma.submission.update({
+          where: { id: submissionId },
+          data: {
+            status: SubmissionStatus.FAILED,
+            ocrNextRetryAt: null,
+            ocrLastError: message,
+          },
+        });
+      }
     } finally {
       const submission = await this.prisma.submission.findFirst({
         where: { id: submissionId, deletedAt: null, task: { deletedAt: null } },
@@ -190,6 +366,82 @@ export class JobsService implements OnModuleInit {
       if (submission) {
         await this.refreshTaskStatus(submission.taskId);
       }
+    }
+  }
+
+  private async bindTopStudentCandidate(
+    submission: StudentMatchSubmission,
+    ocrName: string,
+  ) {
+    if (submission.studentId) return;
+
+    const classIds = submission.task.classes.length
+      ? submission.task.classes.map((item) => item.classId)
+      : [submission.task.classId];
+    if (!classIds.length) return;
+
+    const students = await this.prisma.student.findMany({
+      where: { classId: { in: classIds }, status: 'ACTIVE' },
+      select: { id: true, name: true, classId: true },
+    });
+    const matched = rankStudentCandidates(ocrName, students, 1)[0]?.student;
+    if (!matched) return;
+
+    // OCR 期间老师可能已经手动绑定；只更新仍未绑定的作文。
+    await this.prisma.submission.updateMany({
+      where: {
+        id: submission.id,
+        studentId: null,
+        classId: submission.classId,
+        deletedAt: null,
+      },
+      data: { studentId: matched.id, classId: matched.classId },
+    });
+  }
+
+  private async bindPreviouslyUnboundStudents() {
+    let lastId: string | undefined;
+    while (true) {
+      const submissions = await this.prisma.submission.findMany({
+        where: {
+          ...(lastId ? { id: { gt: lastId } } : {}),
+          deletedAt: null,
+          task: { deletedAt: null },
+          studentId: null,
+          ocrHeaderName: { not: null },
+          status: { not: SubmissionStatus.TEXT_EXTRACTING },
+        },
+        select: {
+          id: true,
+          studentId: true,
+          classId: true,
+          ocrHeaderName: true,
+          task: {
+            select: {
+              classId: true,
+              classes: { select: { classId: true } },
+            },
+          },
+        },
+        orderBy: { id: 'asc' },
+        take: 100,
+      });
+      if (!submissions.length) return;
+
+      for (const submission of submissions) {
+        if (!submission.ocrHeaderName) continue;
+        try {
+          await this.bindTopStudentCandidate(
+            submission,
+            submission.ocrHeaderName,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `已有作文学生匹配失败: ${submission.id}, ${String(error)}`,
+          );
+        }
+      }
+      lastId = submissions[submissions.length - 1].id;
     }
   }
 
@@ -205,7 +457,8 @@ export class JobsService implements OnModuleInit {
           },
           text: true,
           review: true,
-          student: true,
+          student: { include: { class: true } },
+          class: true,
         },
       });
 
@@ -214,7 +467,9 @@ export class JobsService implements OnModuleInit {
       }
 
       const essayText =
-        submission.text.correctedText?.trim() || submission.text.ocrText?.trim() || '';
+        submission.text.correctedText?.trim() ||
+        submission.text.ocrText?.trim() ||
+        '';
 
       if (!essayText) {
         await this.prisma.submission.update({
@@ -234,9 +489,15 @@ export class JobsService implements OnModuleInit {
       const review = await this.aiReviewService.generateEssayReview({
         taskTitle: submission.task.title,
         topicText: submission.task.topicText,
-        topicGuidance: submission.task.topicGuidance as Record<string, unknown> | null,
-        studentName: submission.student?.name ?? submission.detectedName,
-        className: submission.task.class.name,
+        topicGuidance: submission.task.topicGuidance as Record<
+          string,
+          unknown
+        > | null,
+        studentName: submission.student?.name,
+        className:
+          submission.student?.class.name ??
+          submission.class?.name ??
+          submission.task.class.name,
         essayText,
       });
 
@@ -254,7 +515,7 @@ export class JobsService implements OnModuleInit {
           scoreStructure: review.scoring.structure,
           scoreLanguage: review.scoring.language,
           scoreIdea: review.scoring.idea,
-          printableSnapshot: review as unknown as object,
+          printableSnapshot: review,
         },
         update: {
           aiSummary: review.summary,
@@ -267,7 +528,7 @@ export class JobsService implements OnModuleInit {
           scoreStructure: review.scoring.structure,
           scoreLanguage: review.scoring.language,
           scoreIdea: review.scoring.idea,
-          printableSnapshot: review as unknown as object,
+          printableSnapshot: review,
         },
       });
 

@@ -7,6 +7,7 @@ import { apiFetch } from '../../api/client'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
+import { PageTitle } from '../../components/ui/page-title'
 import { Input } from '../../components/ui/input'
 import { getTaskStatusMeta } from '../../lib/status'
 import { formatDate } from '../../lib/utils'
@@ -38,16 +39,8 @@ export function TasksPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-stone-400">
-            Task Center
-          </p>
-          <h1 className="mt-2 text-3xl font-black text-ink">作文任务</h1>
-          <p className="mt-2 text-sm text-stone-500">
-            先创建任务，再上传作文题和学生作文。
-          </p>
-        </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <PageTitle>作文任务</PageTitle>
         <Button onClick={() => navigate('/tasks/new')}>新建批改任务</Button>
       </div>
 

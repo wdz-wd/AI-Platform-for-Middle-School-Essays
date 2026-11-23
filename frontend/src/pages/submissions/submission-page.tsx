@@ -27,19 +27,16 @@ import {
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
+import { PageTitle } from '../../components/ui/page-title'
 import { Textarea } from '../../components/ui/textarea'
 import { getSubmissionStatusMeta } from '../../lib/status'
 import { assetUrl, formatDate } from '../../lib/utils'
-import type { StudentItem, SubmissionDetail } from '../../types/api'
+import type { StudentItem, StudentMatchCandidates, SubmissionDetail } from '../../types/api'
 
-function feedbackClass(tone: 'success' | 'error' | 'info') {
-  if (tone === 'success') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  }
-  if (tone === 'error') {
-    return 'border-rose-200 bg-rose-50 text-rose-700'
-  }
-  return 'border-sky-200 bg-sky-50 text-sky-700'
+type Feedback = {
+  tone: 'success' | 'error' | 'info'
+  message: string
+  detail?: string
 }
 
 function getDimensionComment(
@@ -176,14 +173,8 @@ export function SubmissionPage() {
     aiRewriteExample: '',
   })
   const lastSyncedTextRef = useRef('')
-  const [statusFeedback, setStatusFeedback] = useState<{
-    tone: 'success' | 'error' | 'info'
-    message: string
-  } | null>(null)
-  const [actionFeedback, setActionFeedback] = useState<{
-    tone: 'success' | 'error' | 'info'
-    message: string
-  } | null>(null)
+  const [statusFeedback, setStatusFeedback] = useState<Feedback | null>(null)
+  const [actionFeedback, setActionFeedback] = useState<Feedback | null>(null)
 
   const submissionQuery = useQuery({
     queryKey: ['submission', id],
@@ -205,6 +196,12 @@ export function SubmissionPage() {
         `/students?classId=${selectedClassId}`,
       ),
     enabled: !!selectedClassId,
+  })
+  const candidatesQuery = useQuery({
+    queryKey: ['student-candidates', id, submissionQuery.data?.ocrHeaderName],
+    queryFn: () =>
+      apiFetch<StudentMatchCandidates>(`/submissions/${id}/student-candidates`),
+    enabled: !!id && !!submissionQuery.data && submissionQuery.data.status !== 'TEXT_EXTRACTING',
   })
   const sortedStudents = useMemo(() => {
     return [...(studentsQuery.data ?? [])].sort((a, b) => {
@@ -317,7 +314,10 @@ export function SubmissionPage() {
     if (status === 'TEXT_EXTRACTING') {
       setStatusFeedback({
         tone: 'info',
-        message: '系统正在调用百度 OCR 识别正文，请稍等 5-15 秒。',
+        message: submissionQuery.data?.ocrNextRetryAt ? '等待重试' : '正在识别',
+        detail: submissionQuery.data?.ocrNextRetryAt
+          ? `将在 ${new Date(submissionQuery.data.ocrNextRetryAt).toLocaleTimeString('zh-CN')} 自动继续识别`
+          : undefined,
       })
       return
     }
@@ -325,7 +325,7 @@ export function SubmissionPage() {
     if (status === 'AI_PROCESSING') {
       setStatusFeedback({
         tone: 'info',
-        message: '系统正在后台生成评语，请稍等 2-10 秒。',
+        message: '正在批阅',
       })
       return
     }
@@ -333,7 +333,7 @@ export function SubmissionPage() {
     if (status === 'AI_DONE' || status === 'REVIEWED') {
       setStatusFeedback({
         tone: 'success',
-        message: 'AI 评语已生成，可以继续调整教师评语或直接打印。',
+        message: '评语已生成',
       })
       return
     }
@@ -341,13 +341,24 @@ export function SubmissionPage() {
     if (status === 'FAILED') {
       setStatusFeedback({
         tone: 'error',
-        message: '本次生成失败，请检查 AI 密钥或稍后重新生成。',
+        message: '生成失败',
+        detail: submissionQuery.data?.ocrLastError || '请稍后重试。',
       })
       return
     }
 
     setStatusFeedback(null)
-  }, [submissionQuery.data?.status])
+  }, [submissionQuery.data?.status, submissionQuery.data?.ocrNextRetryAt, submissionQuery.data?.ocrLastError])
+
+  const retryOcrMutation = useMutation({
+    mutationFn: () => apiFetch(`/submissions/${id}/ocr/retry`, { method: 'POST' }),
+    onSuccess: async () => {
+      setActionFeedback({ tone: 'info', message: '已安排重试' })
+      await queryClient.invalidateQueries({ queryKey: ['submission', id] })
+      await queryClient.invalidateQueries({ queryKey: ['task'] })
+    },
+    onError: (error) => setActionFeedback({ tone: 'error', message: '重试失败', detail: (error as Error).message }),
+  })
 
   const saveTextMutation = useMutation({
     mutationFn: () =>
@@ -359,7 +370,7 @@ export function SubmissionPage() {
       lastSyncedTextRef.current = text
       setActionFeedback({
         tone: 'success',
-        message: '正文已保存。现在可以点击“重新生成评语”。',
+        message: '正文已保存',
       })
       await queryClient.invalidateQueries({ queryKey: ['submission', id] })
       await queryClient.invalidateQueries({ queryKey: ['task'] })
@@ -367,7 +378,8 @@ export function SubmissionPage() {
     onError: (error) => {
       setActionFeedback({
         tone: 'error',
-        message: `保存正文失败：${(error as Error).message}`,
+        message: '正文保存失败',
+        detail: (error as Error).message,
       })
     },
   })
@@ -384,14 +396,34 @@ export function SubmissionPage() {
     onSuccess: async () => {
       setActionFeedback({
         tone: 'success',
-        message: '学生绑定已更新。',
+        message: studentId ? '已绑定' : '已取消绑定',
       })
       await queryClient.invalidateQueries({ queryKey: ['submission', id] })
     },
     onError: (error) => {
       setActionFeedback({
         tone: 'error',
-        message: `绑定学生失败：${(error as Error).message}`,
+        message: '绑定失败',
+        detail: (error as Error).message,
+      })
+    },
+  })
+
+  const bindCandidateMutation = useMutation({
+    mutationFn: (candidateId: string) =>
+      apiFetch(`/submissions/${id}/student-binding`, {
+        method: 'PATCH',
+        body: JSON.stringify({ studentId: candidateId }),
+      }),
+    onSuccess: async () => {
+      setActionFeedback({ tone: 'success', message: '已绑定' })
+      await queryClient.invalidateQueries({ queryKey: ['submission', id] })
+    },
+    onError: (error) => {
+      setActionFeedback({
+        tone: 'error',
+        message: '绑定失败',
+        detail: (error as Error).message,
       })
     },
   })
@@ -401,7 +433,7 @@ export function SubmissionPage() {
     onSuccess: async () => {
       setActionFeedback({
         tone: 'info',
-        message: '已提交后台批改任务，系统正在生成评语...',
+        message: '已提交批阅',
       })
       await queryClient.invalidateQueries({ queryKey: ['submission', id] })
       await queryClient.invalidateQueries({ queryKey: ['task'] })
@@ -409,7 +441,8 @@ export function SubmissionPage() {
     onError: (error) => {
       setActionFeedback({
         tone: 'error',
-        message: `生成评语失败：${(error as Error).message}`,
+        message: '评语生成失败',
+        detail: (error as Error).message,
       })
     },
   })
@@ -426,7 +459,7 @@ export function SubmissionPage() {
     onSuccess: async () => {
       setActionFeedback({
         tone: 'success',
-        message: '教师终稿已保存。',
+        message: '终稿已保存',
       })
       await queryClient.invalidateQueries({ queryKey: ['submission', id] })
       await queryClient.invalidateQueries({ queryKey: ['task'] })
@@ -435,7 +468,8 @@ export function SubmissionPage() {
     onError: (error) => {
       setActionFeedback({
         tone: 'error',
-        message: `保存终稿失败：${(error as Error).message}`,
+        message: '终稿保存失败',
+        detail: (error as Error).message,
       })
     },
   })
@@ -455,7 +489,7 @@ export function SubmissionPage() {
       setIsScoreModalOpen(false)
       setActionFeedback({
         tone: 'success',
-        message: '评分已更新，四维评语、总分和雷达图已同步刷新。',
+        message: '评分已更新',
       })
       await queryClient.invalidateQueries({ queryKey: ['submission', id] })
       await queryClient.invalidateQueries({ queryKey: ['task'] })
@@ -464,7 +498,8 @@ export function SubmissionPage() {
     onError: (error) => {
       setActionFeedback({
         tone: 'error',
-        message: `保存评分失败：${(error as Error).message}`,
+        message: '评分保存失败',
+        detail: (error as Error).message,
       })
     },
   })
@@ -479,7 +514,7 @@ export function SubmissionPage() {
       setIsAiReviewModalOpen(false)
       setActionFeedback({
         tone: 'success',
-        message: '结构化评语已更新。',
+        message: '评语已更新',
       })
       await queryClient.invalidateQueries({ queryKey: ['submission', id] })
       await queryClient.invalidateQueries({ queryKey: ['task'] })
@@ -488,7 +523,8 @@ export function SubmissionPage() {
     onError: (error) => {
       setActionFeedback({
         tone: 'error',
-        message: `保存结构化评语失败：${(error as Error).message}`,
+        message: '评语保存失败',
+        detail: (error as Error).message,
       })
     },
   })
@@ -509,18 +545,10 @@ export function SubmissionPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3 text-sm text-stone-400">
-        <span>首页</span>
-        <span>›</span>
-        <span>作文批改</span>
-        <span>›</span>
-        <span className="font-semibold text-stone-600">批改详情</span>
-      </div>
-
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div>
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+        <div className="min-w-0 xl:contents">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-[28px] font-black tracking-tight text-ink">{essayTitle}</h1>
+            <PageTitle>{essayTitle}</PageTitle>
             <Badge
               tone={
                 submissionQuery.data?.status
@@ -533,27 +561,36 @@ export function SubmissionPage() {
                 : '加载中'}
             </Badge>
             {feedback ? (
-              <div
-                className={`rounded-xl border px-4 py-2.5 text-sm ${feedbackClass(feedback.tone)}`}
+              <span
+                className="inline-flex"
+                role={feedback.tone === 'error' ? 'alert' : 'status'}
+                title={feedback.detail}
               >
-                {feedback.message}
-              </div>
+                <Badge tone={feedback.tone === 'error' ? 'danger' : feedback.tone}>
+                  {feedback.message}
+                </Badge>
+              </span>
             ) : null}
+            {submissionQuery.data?.status === 'FAILED' && (
+              <Button className="rounded-md px-2 py-1 text-xs" variant="secondary" disabled={retryOcrMutation.isPending} onClick={() => retryOcrMutation.mutate()}>
+                {retryOcrMutation.isPending ? '提交中...' : '重试识别'}
+              </Button>
+            )}
+            <span className="text-sm text-stone-500">
+              提交时间：{submissionQuery.data ? formatDate(submissionQuery.data.createdAt ?? '') : '--'}
+            </span>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-500">
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3 text-sm text-stone-500 xl:col-span-2 xl:row-start-2 xl:mt-0">
             <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-accent">
               {submissionQuery.data?.class?.name ?? '未指定班级'}
             </span>
             <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-accent">
               {submissionQuery.data?.student?.name ?? '未绑定学生'}
             </span>
-            {submissionQuery.data?.student?.studentNo ? (
-              <span>学号：{submissionQuery.data.student.studentNo}</span>
-            ) : null}
-            <span>提交时间：{submissionQuery.data ? formatDate(submissionQuery.data.createdAt ?? '') : '--'}</span>
             <span>字数：{wordCount || '--'} 字</span>
             <select
-              className="h-10 min-w-[180px] rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
+              aria-label="选择班级"
+              className="h-10 min-w-[150px] max-w-full rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
               value={selectedClassId}
               onChange={(event) => {
                 setSelectedClassId(event.target.value)
@@ -568,7 +605,8 @@ export function SubmissionPage() {
               ))}
             </select>
             <select
-              className="h-10 min-w-[220px] rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
+              aria-label="选择学生"
+              className="h-10 min-w-[170px] max-w-full rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:border-accent"
               disabled={!selectedClassId}
               value={studentId}
               onChange={(event) => setStudentId(event.target.value)}
@@ -578,7 +616,7 @@ export function SubmissionPage() {
               </option>
               {sortedStudents.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name} {item.studentNo ? `(${item.studentNo})` : ''}
+                  {item.name}
                 </option>
               ))}
             </select>
@@ -589,9 +627,30 @@ export function SubmissionPage() {
             >
               保存绑定
             </Button>
+            {submissionQuery.data?.status !== 'TEXT_EXTRACTING' && candidatesQuery.data?.candidates.length ? (
+              <>
+                {candidatesQuery.data.candidates.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    aria-pressed={submissionQuery.data?.student?.id === candidate.id}
+                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-wait disabled:opacity-60 ${
+                      submissionQuery.data?.student?.id === candidate.id
+                        ? 'border-blue-200 bg-blue-50 text-accent'
+                        : 'border-stone-200 bg-white text-stone-600 hover:border-blue-300 hover:bg-blue-50'
+                    }`}
+                    disabled={bindCandidateMutation.isPending}
+                    type="button"
+                    onClick={() => bindCandidateMutation.mutate(candidate.id)}
+                  >
+                    <span className="font-medium">{candidate.name}</span>
+                    <span className="text-xs tabular-nums opacity-70">{candidate.score}%</span>
+                  </button>
+                ))}
+              </>
+            ) : null}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 xl:col-start-2 xl:row-start-1">
           {navigation.prev ? (
             <Button
               variant="secondary"
@@ -632,7 +691,7 @@ export function SubmissionPage() {
                 <button
                   className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                     sourceTab === 'text'
-                      ? 'bg-white text-accent shadow-sm'
+                      ? 'bg-white text-accent'
                       : 'text-stone-500'
                   }`}
                   type="button"
@@ -644,7 +703,7 @@ export function SubmissionPage() {
                 <button
                   className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
                     sourceTab === 'image'
-                      ? 'bg-white text-accent shadow-sm'
+                      ? 'bg-white text-accent'
                       : 'text-stone-500'
                   }`}
                   type="button"
@@ -1171,6 +1230,12 @@ export function SubmissionPage() {
                 />
 
                 <div className="mt-4 grid gap-2">
+                  {submissionQuery.data?.status === 'FAILED' && (
+                    <Button variant="secondary" disabled={retryOcrMutation.isPending} onClick={() => retryOcrMutation.mutate()}>
+                      <RefreshCw className="mr-2 size-4" />
+                      {retryOcrMutation.isPending ? '提交中...' : '重试识别'}
+                    </Button>
+                  )}
                   <Button
                     disabled={saveTextMutation.isPending || text.trim().length < 20}
                     onClick={() => saveTextMutation.mutate()}

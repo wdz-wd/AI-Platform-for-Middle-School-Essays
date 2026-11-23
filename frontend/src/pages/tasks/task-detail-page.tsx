@@ -7,7 +7,7 @@ import {
   Presentation,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
 import { apiFetch, uploadFetch } from '../../api/client'
@@ -16,18 +16,70 @@ import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
 import { FilePicker } from '../../components/ui/file-picker'
 import { Input } from '../../components/ui/input'
+import { PageTitle } from '../../components/ui/page-title'
 import { getSubmissionStatusMeta } from '../../lib/status'
 import { cn, formatDate } from '../../lib/utils'
 import { useTaskPageStore } from '../../stores/task-page-store'
 import type { TaskDetail } from '../../types/api'
 
+const PAGE_SIZE = 10
+
+function PageJump({ totalPages, onJump }: { totalPages: number; onJump: (page: number) => void }) {
+  const [draft, setDraft] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  const errorId = useId()
+
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2 text-sm text-stone-600"
+      onSubmit={(event) => {
+        event.preventDefault()
+        const input = draft.trim()
+        const target = Number(input)
+        if (!/^\d+$/.test(input) || target < 1 || target > totalPages) {
+          setInvalid(true)
+          return
+        }
+        onJump(target)
+        setDraft('')
+        setInvalid(false)
+      }}
+    >
+      <label className="flex items-center gap-1.5">
+        跳至第
+        <Input
+          aria-label="跳转页码"
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
+          className="h-9 w-16 px-2 text-center"
+          inputMode="numeric"
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setInvalid(false)
+          }}
+        />
+        页
+      </label>
+      <Button type="submit" variant="secondary" className="h-9 px-3">前往</Button>
+      {invalid ? <span id={errorId} role="alert" className="text-xs text-rose-600">请输入 1 到 {totalPages} 的整数页码</span> : null}
+    </form>
+  )
+}
+
 export function TaskDetailPage() {
   const { id = '' } = useParams()
   const queryClient = useQueryClient()
-  const getTaskPage = useTaskPageStore((state) => state.getTaskPage)
+  const storedPage = useTaskPageStore((state) => state.getTaskPage(id))
   const setTaskPage = useTaskPageStore((state) => state.setTaskPage)
   const [submissionFiles, setSubmissionFiles] = useState<FileList | null>(null)
-  const [page, setPage] = useState(() => getTaskPage(id))
+  const [expandedGuidanceTask, setExpandedGuidanceTask] = useState<string | null>(null)
+  const [guidanceLimit, setGuidanceLimit] = useState<number | null>(null)
+  const topicBriefRef = useRef<HTMLDivElement>(null)
+  const rightColumnRef = useRef<HTMLDivElement>(null)
+  const guidanceViewportRef = useRef<HTMLDivElement>(null)
+  const guidanceBodyRef = useRef<HTMLDivElement>(null)
+  const guidanceId = useId()
   const [printMenuOpen, setPrintMenuOpen] = useState(false)
   const [classModalOpen, setClassModalOpen] = useState(false)
   const [titleModalOpen, setTitleModalOpen] = useState(false)
@@ -35,7 +87,6 @@ export function TaskDetailPage() {
   const [deletingSubmission, setDeletingSubmission] = useState<
     TaskDetail['submissions'][number] | null
   >(null)
-  const pageSize = 9
 
   const taskQuery = useQuery({
     queryKey: ['task', id],
@@ -67,16 +118,6 @@ export function TaskDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
-
-  const hasWorkingQueue = useMemo(
-    () =>
-      taskQuery.data?.submissions.some((item) =>
-        ['TEXT_EXTRACTING', 'TEXT_READY', 'AI_PROCESSING', 'UPLOADED'].includes(
-          item.status,
-        ),
-      ) ?? false,
-    [taskQuery.data],
-  )
 
   const taskClasses = taskQuery.data?.classes?.length
     ? taskQuery.data.classes
@@ -119,27 +160,50 @@ export function TaskDetailPage() {
   })
 
   const submissions = taskQuery.data?.submissions ?? []
-  const totalPages = Math.max(1, Math.ceil(submissions.length / pageSize))
-  const pagedSubmissions = submissions.slice((page - 1) * pageSize, page * pageSize)
-
-  const updatePage = (nextPage: number) => {
-    const normalizedPage = Math.max(1, Math.min(totalPages, nextPage))
-    setPage(normalizedPage)
-    setTaskPage(id, normalizedPage)
-  }
+  const hasWorkingQueue = submissions.some((item) =>
+    ['TEXT_EXTRACTING', 'TEXT_READY', 'AI_PROCESSING', 'UPLOADED'].includes(item.status),
+  )
+  const totalPages = Math.max(1, Math.ceil(submissions.length / PAGE_SIZE))
+  const page = Math.min(storedPage, totalPages)
+  const pagedSubmissions = submissions.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   useEffect(() => {
-    const storedPage = getTaskPage(id)
-    if (page !== storedPage) {
-      setPage(storedPage)
+    if (taskQuery.data && storedPage > totalPages) {
+      setTaskPage(id, totalPages)
     }
-  }, [getTaskPage, id])
+  }, [id, setTaskPage, storedPage, taskQuery.data, totalPages])
+
+  const hasGuidance = Boolean(taskQuery.data?.topicGuidance)
+  const guidanceExpanded = expandedGuidanceTask === id
+  const guidanceCollapsed = guidanceLimit !== null && !guidanceExpanded
 
   useEffect(() => {
-    if (taskQuery.data && page > totalPages) {
-      updatePage(totalPages)
+    const rightColumn = rightColumnRef.current
+    const brief = topicBriefRef.current
+    const viewport = guidanceViewportRef.current
+    const body = guidanceBodyRef.current
+    const card = viewport?.parentElement
+    if (!hasGuidance || !rightColumn || !brief || !viewport || !body || !card) return
+
+    const desktop = window.matchMedia('(min-width: 1280px)')
+    const measure = () => {
+      // The right column keeps its natural height, even when the guidance expands.
+      const { paddingBottom, borderBottomWidth } = getComputedStyle(card)
+      const available = Math.floor(
+        rightColumn.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top
+        - parseFloat(paddingBottom) - parseFloat(borderBottomWidth),
+      )
+      const needsToggle = desktop.matches && body.getBoundingClientRect().height > available + 1
+      setGuidanceLimit(needsToggle ? Math.max(0, available) : null)
     }
-  }, [page, taskQuery.data, totalPages])
+    const observer = new ResizeObserver(measure)
+    for (const element of [rightColumn, brief, body]) observer.observe(element)
+    desktop.addEventListener('change', measure)
+    return () => {
+      observer.disconnect()
+      desktop.removeEventListener('change', measure)
+    }
+  }, [hasGuidance, id])
 
   const guidanceCards = taskQuery.data?.topicGuidance
     ? [
@@ -172,19 +236,8 @@ export function TaskDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-stone-400">
-            Task Detail
-          </p>
-          <h1 className="mt-2 text-3xl font-black text-ink">
-            {taskQuery.data?.title ?? '加载中...'}
-          </h1>
-          <p className="mt-2 text-sm text-stone-500">
-            {classSummary} · 共 {taskQuery.data?.totalCount ?? 0} 篇作文
-            {hasWorkingQueue ? ' · 正在后台批改' : ''}
-          </p>
-        </div>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <PageTitle>{taskQuery.data?.title ?? '加载中...'}</PageTitle>
         <div className="relative">
           <Button
             variant="secondary"
@@ -219,123 +272,145 @@ export function TaskDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.28fr]">
-        <div className="space-y-6">
-          <Card className="rounded-xl p-5 shadow-none">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm uppercase tracking-[0.24em] text-stone-400">
-                  Topic Brief
-                </p>
-                <h2 className="mt-2 text-xl font-black text-ink">题目基本信息</h2>
-              </div>
-              {taskQuery.data?.topicFiles?.length ? (
-                <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-accent">
-                  附件 {taskQuery.data.topicFiles.length} 份
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(16rem,1fr)_minmax(0,2.7fr)]">
+        <div className="min-w-0 space-y-6">
+          <div ref={topicBriefRef}>
+            <Card className="rounded-xl p-5 shadow-none">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-ink">题目基本信息</h2>
                 </div>
-              ) : null}
-            </div>
-            <div className="mt-5 space-y-4">
-              <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-stone-500">任务名称</p>
+                {taskQuery.data?.topicFiles?.length ? (
+                  <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-accent">
+                    附件 {taskQuery.data.topicFiles.length} 份
+                  </div>
+                ) : null}
+              </div>
+              <div className="mt-5 space-y-4">
+                <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-500">任务名称</p>
+                      <p className="mt-2 text-base font-bold text-ink [overflow-wrap:anywhere]">
+                        {taskQuery.data?.title ?? '--'}
+                      </p>
+                    </div>
+                    {taskQuery.data ? (
+                      <Button
+                        className="h-9 px-3"
+                        variant="secondary"
+                        onClick={() => {
+                          setTitleDraft(taskQuery.data?.title ?? '')
+                          setTitleModalOpen(true)
+                        }}
+                      >
+                        <Pencil className="mr-1.5 size-4" />
+                        编辑
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
+                  <button
+                    className="block w-full text-left"
+                    type="button"
+                    onClick={() => setClassModalOpen(true)}
+                  >
+                    <p className="text-sm font-semibold text-stone-500">所属班级</p>
                     <p className="mt-2 text-base font-bold text-ink">
-                      {taskQuery.data?.title ?? '--'}
+                      {classSummary}
+                    </p>
+                  </button>
+                  </div>
+                  <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-stone-500">创建时间</p>
+                    <p className="mt-2 text-base font-bold text-ink">
+                      {taskQuery.data ? formatDate(taskQuery.data.createdAt) : '--'}
                     </p>
                   </div>
-                  {taskQuery.data ? (
-                    <Button
-                      className="h-9 px-3"
-                      variant="secondary"
-                      onClick={() => {
-                        setTitleDraft(taskQuery.data?.title ?? '')
-                        setTitleModalOpen(true)
-                      }}
-                    >
-                      <Pencil className="mr-1.5 size-4" />
-                      编辑
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
-                <button
-                  className="block w-full text-left"
-                  type="button"
-                  onClick={() => setClassModalOpen(true)}
-                >
-                  <p className="text-sm font-semibold text-stone-500">所属班级</p>
-                  <p className="mt-2 text-base font-bold text-ink">
-                    {classSummary}
-                  </p>
-                </button>
                 </div>
                 <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
-                  <p className="text-sm font-semibold text-stone-500">创建时间</p>
-                  <p className="mt-2 text-base font-bold text-ink">
-                    {taskQuery.data ? formatDate(taskQuery.data.createdAt) : '--'}
+                  <p className="text-sm font-semibold text-stone-500">作文题目与材料</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600 [overflow-wrap:anywhere]">
+                    {taskQuery.data?.topicText ?? '暂无题面文本'}
                   </p>
                 </div>
+                {taskQuery.data?.note ? (
+                  <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-stone-500">任务备注</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600 [overflow-wrap:anywhere]">
+                      {taskQuery.data.note}
+                    </p>
+                  </div>
+                ) : null}
               </div>
-              <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
-                <p className="text-sm font-semibold text-stone-500">作文题目与材料</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600">
-                  {taskQuery.data?.topicText ?? '暂无题面文本'}
-                </p>
-              </div>
-              {taskQuery.data?.note ? (
-                <div className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-4">
-                  <p className="text-sm font-semibold text-stone-500">任务备注</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600">
-                    {taskQuery.data.note}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           <Card className="rounded-xl p-5 shadow-none">
-            <div className="flex items-center gap-3">
-              <span className="h-5 w-1 rounded-full bg-accent" />
-              <h2 className="text-lg font-bold text-ink">题目讲解思路</h2>
+            <div className="flex min-h-8 items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <span className="h-5 w-1 shrink-0 rounded-full bg-accent" />
+                <h2 className="text-lg font-bold text-ink">题目讲解思路</h2>
+              </div>
+              {hasGuidance && guidanceLimit !== null ? (
+                <button
+                  aria-controls={guidanceId}
+                  aria-expanded={guidanceExpanded}
+                  className="h-8 shrink-0 rounded-md px-2 text-sm font-semibold text-accent hover:bg-blue-50"
+                  type="button"
+                  onClick={() => setExpandedGuidanceTask(guidanceExpanded ? null : id)}
+                >
+                  {guidanceExpanded ? '收起' : '展开全部'}
+                </button>
+              ) : null}
             </div>
-            {taskQuery.data?.topicGuidance ? (
-              <div className="mt-5 grid gap-4">
-                {guidanceCards.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <div
-                      key={item.label}
-                      className={cn(
-                        'flex items-start gap-3 rounded-xl border px-4 py-4',
-                        item.tone === 'blue' && 'border-blue-100 bg-blue-50/70',
-                        item.tone === 'amber' && 'border-amber-100 bg-amber-50/80',
-                        item.tone === 'violet' && 'border-violet-100 bg-violet-50/70',
-                        item.tone === 'cyan' && 'border-cyan-100 bg-cyan-50/70',
-                      )}
-                    >
-                      <span
+            {hasGuidance ? (
+              <div
+                ref={guidanceViewportRef}
+                id={guidanceId}
+                className={cn('relative mt-5', guidanceCollapsed && 'overflow-hidden')}
+                style={guidanceCollapsed ? { maxHeight: guidanceLimit } : undefined}
+              >
+                <div ref={guidanceBodyRef} className="grid gap-4">
+                  {guidanceCards.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <div
+                        key={item.label}
                         className={cn(
-                          'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-                          item.tone === 'blue' && 'bg-white text-blue-600',
-                          item.tone === 'amber' && 'bg-white text-amber-600',
-                          item.tone === 'violet' && 'bg-white text-violet-600',
-                          item.tone === 'cyan' && 'bg-white text-cyan-600',
+                          'flex items-start gap-3 rounded-xl border px-4 py-4',
+                          item.tone === 'blue' && 'border-blue-100 bg-blue-50/70',
+                          item.tone === 'amber' && 'border-amber-100 bg-amber-50/80',
+                          item.tone === 'violet' && 'border-violet-100 bg-violet-50/70',
+                          item.tone === 'cyan' && 'border-cyan-100 bg-cyan-50/70',
                         )}
                       >
-                        <Icon className="size-4.5" />
-                      </span>
-                      <div>
-                        <p className="text-sm font-semibold text-ink">{item.label}</p>
-                        <p className="mt-2 text-sm leading-7 text-stone-600">
-                          {item.value}
-                        </p>
+                        <span
+                          className={cn(
+                            'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+                            item.tone === 'blue' && 'bg-white text-blue-600',
+                            item.tone === 'amber' && 'bg-white text-amber-600',
+                            item.tone === 'violet' && 'bg-white text-violet-600',
+                            item.tone === 'cyan' && 'bg-white text-cyan-600',
+                          )}
+                        >
+                          <Icon className="size-4.5" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-ink">{item.label}</p>
+                          <p className="mt-2 text-sm leading-7 text-stone-600 [overflow-wrap:anywhere]">
+                            {item.value}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
+                {guidanceCollapsed ? (
+                  <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+                ) : null}
               </div>
             ) : (
               <p className="mt-5 text-sm text-stone-500">
@@ -345,7 +420,7 @@ export function TaskDetailPage() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div ref={rightColumnRef} className="min-w-0 space-y-6">
           <Card className="rounded-xl p-4 shadow-none">
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <FilePicker
@@ -368,42 +443,55 @@ export function TaskDetailPage() {
           </Card>
 
           <Card className="overflow-hidden rounded-xl p-0 shadow-none">
-            <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-5 py-4">
-              <h2 className="text-lg font-bold text-ink">作文列表</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 px-5 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-bold text-ink">作文列表</h2>
+                {hasWorkingQueue ? <Badge tone="info">正在后台批改</Badge> : null}
+              </div>
               <span className="text-sm text-stone-500">
                 共 {submissions.length} 篇，当前第 {page}/{totalPages} 页
               </span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-[1050px] text-sm">
-                <thead className="bg-stone-50 text-left text-stone-500">
-                  <tr>
-                    <th className="w-[220px] px-5 py-4 font-medium">文件名</th>
-                    <th className="w-[140px] px-5 py-4 font-medium">状态</th>
-                    <th className="px-5 py-4 font-medium">得分</th>
-                    <th className="w-[120px] px-5 py-4 font-medium">文稿情况</th>
-                    <th className="px-5 py-4 font-medium">AI 总评</th>
-                    <th className="px-5 py-4 font-medium">更新时间</th>
-                    <th className="w-[170px] px-5 py-4 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedSubmissions.map((submission) => (
+            <table className="w-full table-fixed text-sm">
+              <thead className="bg-stone-50 text-left text-stone-500">
+                <tr>
+                  <th scope="col" className="w-[40%] px-2 py-3 font-medium sm:w-[22%] sm:pl-4">文件名</th>
+                  <th scope="col" className="w-[24%] px-1 py-3 font-medium sm:w-[13%] sm:px-2">状态</th>
+                  <th scope="col" className="w-[13%] px-1 py-3 font-medium sm:w-[7%] sm:px-2">得分</th>
+                  <th scope="col" className="hidden w-[12%] px-2 py-3 font-medium sm:table-cell">文稿情况</th>
+                  <th scope="col" className="hidden px-2 py-3 font-medium sm:table-cell">AI 总评</th>
+                  <th scope="col" className="hidden w-[12%] px-2 py-3 font-medium sm:table-cell">更新时间</th>
+                  <th scope="col" className="w-[23%] px-2 py-3 font-medium sm:w-[16%]">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedSubmissions.map((submission) => {
+                  const fileName = submission.files[0]?.fileName ?? submission.detectedName ?? '未命名文件'
+                  const textStatus = submission.status === 'TEXT_EXTRACTING'
+                    ? 'OCR 识别中'
+                    : submission.text?.correctedText
+                      ? '已修正文稿'
+                      : submission.text?.ocrText ? '已提取文本' : '待补录'
+                  const summary = submission.review?.aiSummary ?? '尚未生成'
+                  const updatedAt = formatDate(submission.createdAt)
+                  return (
                     <tr key={submission.id} className="border-t border-stone-100">
-                      <td className="max-w-[220px] px-5 py-4 text-ink">
-                        <p className="truncate">
-                          {submission.files[0]?.fileName ?? submission.detectedName ?? '未命名文件'}
-                        </p>
+                      <td className="px-2 py-3 text-ink sm:pl-4">
+                        <p className="truncate" title={fileName}>{fileName}</p>
+                        <div className="mt-1 space-y-0.5 text-xs text-stone-500 sm:hidden">
+                          <p className="[overflow-wrap:anywhere]">{textStatus} · {updatedAt}</p>
+                          <p className="line-clamp-2 [overflow-wrap:anywhere]">AI 总评：{summary}</p>
+                        </div>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-1 py-3 [overflow-wrap:anywhere] sm:px-2">
                         <Badge tone={getSubmissionStatusMeta(submission.status).tone}>
                           {getSubmissionStatusMeta(submission.status).label}
                         </Badge>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-1 py-3 sm:px-2">
                         <span
                           className={cn(
-                            'inline-flex min-w-[74px] items-center justify-center rounded-xl px-3 py-2 text-sm font-black',
+                            'inline-flex min-w-7 items-center justify-center rounded-lg px-1 py-1.5 text-sm font-black',
                             submission.review?.scoreTotal == null &&
                               'bg-stone-100 text-stone-400',
                             submission.review?.scoreTotal != null &&
@@ -423,27 +511,17 @@ export function TaskDetailPage() {
                             : `${submission.review.scoreTotal}`}
                         </span>
                       </td>
-                      <td className="max-w-[120px] px-5 py-4 text-stone-600">
-                        <p className="truncate">
-                          {submission.status === 'TEXT_EXTRACTING'
-                            ? 'OCR 识别中'
-                            : submission.text?.correctedText
-                              ? '已修正文稿'
-                              : submission.text?.ocrText
-                                ? '已提取文本'
-                                : '待补录'}
-                        </p>
+                      <td className="hidden px-2 py-3 text-stone-600 [overflow-wrap:anywhere] sm:table-cell">
+                        {textStatus}
                       </td>
-                      <td className="max-w-xs px-5 py-4 text-stone-600">
-                        <p className="line-clamp-4">
-                          {submission.review?.aiSummary ?? '尚未生成'}
-                        </p>
+                      <td className="hidden px-2 py-3 text-stone-600 sm:table-cell">
+                        <p className="line-clamp-4 [overflow-wrap:anywhere]">{summary}</p>
                       </td>
-                      <td className="px-5 py-4 text-stone-600">
-                        {formatDate(submission.createdAt)}
+                      <td className="hidden px-2 py-3 text-stone-600 [overflow-wrap:anywhere] sm:table-cell">
+                        {updatedAt}
                       </td>
-                      <td className="px-5 py-4">
-                        <div className="flex flex-nowrap items-center gap-3 whitespace-nowrap">
+                      <td className="px-2 py-3">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs [&>*]:whitespace-nowrap xl:text-sm">
                           <Link
                             className="font-semibold text-accent"
                             to={`/submissions/${submission.id}`}
@@ -467,18 +545,19 @@ export function TaskDetailPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex items-center justify-between gap-4 border-t border-stone-100 px-5 py-4">
-              <p className="text-sm text-stone-500">每页 {pageSize} 篇</p>
-              <div className="flex items-center gap-2">
+                  )
+                })}
+              </tbody>
+            </table>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 px-5 py-4">
+              <p className="text-sm text-stone-500">每页 {PAGE_SIZE} 篇</p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="flex items-center gap-2">
                   <Button
                     className="h-10 px-3"
                     disabled={page <= 1}
                     variant="secondary"
-                    onClick={() => updatePage(page - 1)}
+                    onClick={() => setTaskPage(id, page - 1)}
                   >
                     上一页
                   </Button>
@@ -489,10 +568,14 @@ export function TaskDetailPage() {
                     className="h-10 px-3"
                     disabled={page >= totalPages}
                     variant="secondary"
-                    onClick={() => updatePage(page + 1)}
+                    onClick={() => setTaskPage(id, page + 1)}
                   >
                     下一页
                   </Button>
+                </div>
+                {totalPages > 1 ? (
+                  <PageJump key={`${id}:${page}`} totalPages={totalPages} onJump={(target) => setTaskPage(id, target)} />
+                ) : null}
               </div>
             </div>
           </Card>

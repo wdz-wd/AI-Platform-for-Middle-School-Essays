@@ -25,8 +25,20 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}) {
   })
 
   if (!response.ok) {
-    const text = await response.text()
-    throw new Error(text || '请求失败')
+    const auth = useAuthStore.getState()
+    if (response.status === 401 && path !== '/auth/login' && token && auth.token === token) {
+      auth.clearSession()
+    }
+    const body = await response.text()
+    let message = body
+    try {
+      const parsed = JSON.parse(body)
+      if (typeof parsed?.message === 'string') message = parsed.message
+      if (Array.isArray(parsed?.message)) message = parsed.message.join('，')
+    } catch {
+      // Some gateways return plain text instead of a JSON response.
+    }
+    throw new Error(message || '请求失败')
   }
 
   if (response.status === 204) {

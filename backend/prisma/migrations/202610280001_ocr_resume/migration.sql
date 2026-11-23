@@ -1,0 +1,5 @@
+ALTER TABLE "Submission"
+ADD COLUMN "ocrProgress" JSONB,
+ADD COLUMN "ocrRetryCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "ocrNextRetryAt" TIMESTAMP(3),
+ADD COLUMN "ocrLastError" TEXT;

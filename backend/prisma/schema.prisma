@@ -46,6 +46,8 @@ model User {
   id          String      @id @default(cuid())
   username    String      @unique
   passwordHash String
+  mustChangePassword Boolean @default(false)
+  tokenVersion Int @default(0)
   role        UserRole
   displayName String
   status      String      @default("ACTIVE")
@@ -134,6 +136,11 @@ model Submission {
   studentId      String?
   detectedName   String?
   detectedClass  String?
+  ocrHeaderName  String?
+  ocrProgress    Json?
+  ocrRetryCount  Int              @default(0)
+  ocrNextRetryAt DateTime?
+  ocrLastError   String?
   status         SubmissionStatus @default(UPLOADED)
   reviewedAt     DateTime?
   task           EssayTask        @relation(fields: [taskId], references: [id], onDelete: Cascade)

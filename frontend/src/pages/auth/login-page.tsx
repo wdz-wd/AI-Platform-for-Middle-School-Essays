@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BookOpenText,
   Eye,
@@ -15,7 +15,7 @@ import { apiFetch } from '../../api/client'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { useAuthStore } from '../../stores/auth-store'
-import type { User } from '../../types/api'
+import type { LoginSession } from '../../types/api'
 
 const schema = z.object({
   username: z.string().min(1, '请输入用户名'),
@@ -27,28 +27,28 @@ type FormValues = z.infer<typeof schema>
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const setSession = useAuthStore((state) => state.setSession)
-  const [rememberMe, setRememberMe] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      username: 'teacher',
-      password: 'Teacher@123456',
+      username: '',
+      password: '',
     },
   })
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
-      apiFetch<{ accessToken: string; user: User }>('/auth/login', {
+      apiFetch<LoginSession>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, username: values.username.trim() }),
       }),
     onSuccess: (result) => {
+      queryClient.clear()
       setSession({ token: result.accessToken, user: result.user })
-      navigate((location.state as { from?: string } | undefined)?.from ?? '/tasks', {
-        replace: true,
-      })
+      const from = (location.state as { from?: string } | undefined)?.from
+      navigate(result.user.mustChangePassword ? '/change-password' : (from ?? '/tasks'), { replace: true })
     },
   })
 
@@ -79,11 +79,6 @@ export function LoginPage() {
                 <br />
                 让写作教学更高效
               </h1>
-              <p className="mt-5 text-[17px] leading-8 text-[#486187]">
-                智能批改、精准评价、数据分析
-                <br />
-                助力教师减负增效，全面提升学生写作能力
-              </p>
             </div>
 
             <div className="relative mt-6 max-w-[760px]">
@@ -110,7 +105,6 @@ export function LoginPage() {
                 <h2 className="text-[44px] font-black tracking-tight text-[#1a2f63]">
                   教师登录
                 </h2>
-                <p className="mt-4 text-xl text-[#5b6f96]">欢迎使用作文智批平台</p>
               </div>
 
               <form
@@ -123,6 +117,7 @@ export function LoginPage() {
                     <Input
                       className="h-14 rounded-xl border-[#d8e3f6] bg-white pl-14 pr-4 text-base shadow-none placeholder:text-[#9aa9c7] focus:border-[#8bb2ff] focus:ring-[#dbeafe]"
                       placeholder="请输入手机号/账号"
+                      autoComplete="username"
                       {...form.register('username')}
                     />
                   </div>
@@ -137,6 +132,7 @@ export function LoginPage() {
                     <Input
                       className="h-14 rounded-xl border-[#d8e3f6] bg-white pl-14 pr-14 text-base shadow-none placeholder:text-[#9aa9c7] focus:border-[#8bb2ff] focus:ring-[#dbeafe]"
                       placeholder="请输入密码"
+                      autoComplete="current-password"
                       type={showPassword ? 'text' : 'password'}
                       {...form.register('password')}
                     />
@@ -157,26 +153,10 @@ export function LoginPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <label className="flex cursor-pointer items-center gap-2 text-[#53698f]">
-                    <input
-                      checked={rememberMe}
-                      className="h-4 w-4 rounded border-stone-300 accent-accent"
-                      type="checkbox"
-                      onChange={(event) => setRememberMe(event.target.checked)}
-                    />
-                    记住我
-                  </label>
-                  <button
-                    className="font-medium text-[#6c7fa4] transition hover:text-accent"
-                    type="button"
-                  >
-                    忘记密码?
-                  </button>
-                </div>
+                <p className="text-right text-sm text-[#53698f]">忘记密码请联系管理员</p>
 
                 <Button
-                  className="h-13 w-full rounded-xl text-lg font-bold shadow-[0_14px_34px_rgba(37,99,235,0.28)]"
+                  className="h-13 w-full rounded-xl text-lg font-bold"
                   disabled={mutation.isPending}
                 >
                   {mutation.isPending ? '登录中...' : '登录'}
@@ -188,14 +168,6 @@ export function LoginPage() {
                   </p>
                 ) : null}
               </form>
-
-              <div className="mt-8 rounded-xl border border-[#eef3fb] bg-[#f8fbff] px-5 py-4">
-                <p className="text-sm font-semibold text-[#1f3360]">开发环境默认账号</p>
-                <div className="mt-2 space-y-1.5 text-sm text-[#62779b]">
-                  <p>admin / Admin@123456</p>
-                  <p>teacher / Teacher@123456</p>
-                </div>
-              </div>
 
               <p className="mt-6 text-center text-sm leading-7 text-[#7c8dab]">
                 使用本平台即表示您同意

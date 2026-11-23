@@ -138,13 +138,15 @@ export class EssayTasksService {
         ...file,
         publicUrl: this.filesService.toPublicUrl(file.filePath),
       })),
-      submissions: task.submissions.map((submission) => ({
-        ...submission,
-        files: submission.files.map((file) => ({
-          ...file,
-          publicUrl: this.filesService.toPublicUrl(file.filePath),
-        })),
-      })),
+      submissions: task.submissions.map(
+        ({ ocrProgress: _ocrProgress, ...submission }) => ({
+          ...submission,
+          files: submission.files.map((file) => ({
+            ...file,
+            publicUrl: this.filesService.toPublicUrl(file.filePath),
+          })),
+        }),
+      ),
     };
   }
 
@@ -259,7 +261,10 @@ export class EssayTasksService {
     const createdIds: string[] = [];
 
     for (const file of files) {
-      const storedFile = await this.filesService.storeSubmissionFile(taskId, file);
+      const storedFile = await this.filesService.storeSubmissionFile(
+        taskId,
+        file,
+      );
       const extracted = await this.textExtractionService.extractText({
         kind: storedFile.fileType,
         buffer: file.buffer,
@@ -287,7 +292,8 @@ export class EssayTasksService {
             create: {
               ocrText: extracted.text || null,
               correctedText:
-                extracted.requiresManualCorrection || extracted.requiresOcrPolling
+                extracted.requiresManualCorrection ||
+                extracted.requiresOcrPolling
                   ? null
                   : extracted.text || null,
             },
@@ -354,7 +360,8 @@ export class EssayTasksService {
 
     const forbidden = classes.some(
       (item) =>
-        currentUser.role !== UserRole.ADMIN && item.teacherId !== currentUser.id,
+        currentUser.role !== UserRole.ADMIN &&
+        item.teacherId !== currentUser.id,
     );
 
     if (forbidden) {
@@ -372,7 +379,9 @@ export class EssayTasksService {
       );
     }
 
-    return classIds.map((classId) => classes.find((item) => item.id === classId)!);
+    return classIds.map(
+      (classId) => classes.find((item) => item.id === classId)!,
+    );
   }
 
   private taskListInclude() {

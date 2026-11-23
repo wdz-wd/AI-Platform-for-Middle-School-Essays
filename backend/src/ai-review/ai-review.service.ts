@@ -23,10 +23,19 @@ type TopicGuidanceResult = {
 };
 
 type EssayTextCleanupResult = {
+  studentName: string;
   title: string;
   body: string;
   fullText: string;
 };
+
+const OCR_REVIEW_RULES = `OCR 容错评阅规则（优先于其他评阅要求）：
+1. 作文是由手写原稿转写得到的文本，可能存在错认字、漏字、多字、涂改残留和断句错误。你无法核对原稿，不能区分学生笔误与识别错误；对局部不通顺、词义突兀或字词残缺，一律按可能的识别噪声略过，依据能够确认的上下文理解全文，不归因于学生。
+2. 所有输出字段都不指出错别字、病句、标点错误或个别词语使用错误；不要求改某个字、删某个字或逐句润色，不引用、复述疑似识别错误的片段作为批评证据，也不声称学生没有错别字。
+3. 不因上述局部噪声降低总分或语言分，不据此认定学生表达能力差、句子残缺、作文未完成或偏题。语言分依据可靠上下文中可以确认的叙述表现、描写效果和整体表达风格判断；其他扣分也必须有明确的整体内容依据。
+4. 存在问题和修改建议聚焦扣题、选材、立意、结构。只根据能够确认的主要事件、中心、段落关系和结尾提出判断；不把疑似识别造成的词句问题包装成选材、结构或立意问题。不确定的判断直接略过，宁可少写，也不要凑出问题。
+5. 评语将直接打印给学生，不能出现 OCR、识别错误、模型、字迹潦草、原稿难辨等内部处理说明，也不能把你根据上下文猜出的字句当作学生原句。
+6. 输出前逐项自查 summary、strengths、issues、suggestions、rewriteExample 和评分依据，删除字词纠错、疑似错文引用及基于局部不通顺的负面评价；不要输出自查过程。`;
 
 @Injectable()
 export class AiReviewService {
@@ -81,12 +90,18 @@ ${input.topicText}`,
     const content = await this.chat([
       {
         role: 'system',
-        content:
-          '你是一名严谨的中考语文作文批改助手。你必须只返回一个 JSON 对象，不要输出 markdown，不要解释，不要补充任何字段。',
+        content: `你是一名严谨的中考语文作文批改助手，评语面向学生并会直接打印。你必须只返回一个 JSON 对象，不要输出 markdown，不要解释，不要补充任何字段。
+
+${OCR_REVIEW_RULES}`,
       },
       {
         role: 'user',
         content: `请按照真实中考语文作文阅卷习惯，对以下作文进行整体批改与评分，并严格按要求返回 JSON。
+
+容错示例（只用于理解规则，不是本篇作文内容，不得写入评语）：
+- “总希望”可能被转写成“恶希望”，这种单字突兀不能作为错别字、用词不当或表达不通顺的问题指出。
+- “漆面光亮如镜”可能因涂改残留被转写成“漆面光亮如望镜”，不要建议删除“望”，也不要引用这段转写文字进行改句。
+- 对类似情况，跳过不能确认的局部，继续评价全文的扣题、选材、立意和结构。不要在评语中解释你跳过了哪些文字。
 
 评分校准要求：
 1. 采用 50 分制，总分仍按“整体印象分”来定，不要按机械加减分公式评分。
@@ -94,21 +109,21 @@ ${input.topicText}`,
 3. 明显优秀、立意或语言较突出的作文，通常在 40-42 分；42 分以上非常少见，只有在明显出众时才使用。
 4. 明显较差、问题较多但基本写完的作文，一般在 31-35 分。
 5. 没写完、明显跑题、内容非常空泛或质量很差的作文，才给 30 分左右或低于 30 分。
-6. 当前依据 OCR 转写文本评分，无法准确判断字迹、卷面和部分标点，因此不要因为这些图像因素重扣分；若文本中存在非常明显的句子残缺或严重不通顺，可酌情降低总分。
+6. 当前依据 OCR 转写文本评分，不评价字迹、卷面、错别字和标点，不因局部句子残缺、个别词语突兀或表达不通顺扣总分或语言分。主要依据可确认的整体扣题程度、材料支撑、结构安排和立意深度评分；语言仅评价可靠上下文体现的整体表现力。
 7. 除总分外，还要给出四个展示用子项分：内容（20分）、结构（10分）、语言（10分）、立意（10分）。这四项是为了展示解释评分，不是机械公式来源，但最终返回时四项之和必须等于总分。
 
 前置解题思路使用要求：
 1. 下方“题目解题思路”来自前一步 AI 对作文题目的审题、立意和结构分析，必须作为重要参照。
 2. 评分时要结合题目解题思路判断学生作文是否切题、立意是否准确、材料选择是否服务中心、结构安排是否贴合题目要求。
-3. 评语不能只做泛泛语言评价，要指出学生作文与题目解题思路之间的贴合点和偏差点。
+3. 评语应结合明确的主要事件、段落关系和中心表达，指出与题意的贴合点；只有存在可靠的整体内容依据时才指出偏差，不根据疑似识别噪声推断偏题。
 4. 题目解题思路只作为阅卷参照，不要照搬成学生作文内容，也不要因为学生没有完全按该思路写就机械扣分；只要立意合理、能自洽切题，也应认可。
 
 输出字段要求：
-1. summary：80-120字，总结作文整体完成度、中心、语言与结构情况。
-2. strengths：列出2-3个主要优点，写成一段话，不要分点符号。
-3. issues：列出2-4个最主要问题，写成一段话，不要泛泛而谈，要贴合作文内容。
-4. suggestions：必须挑选原文中2-3个最典型的句子进行修改建议，格式固定为“原句：…… 修改：…… 说明：……”，各组之间用换行分隔。
-5. rewriteExample：基于原文内容，给出一个120-180字的优化示例片段，要求贴合原题，不要脱离原文另起炉灶。
+1. summary：80-120字，从整体扣题程度、主要材料、中心与结构评价完成情况，不评价局部字词正误。
+2. strengths：根据可以确认的内容写2-3个主要优点，合为一段话，不要分点符号；依据不足时可以少写。
+3. issues：仅从扣题、选材、立意、结构中指出有明确依据的主要问题，合为一段话；不必覆盖每个方面，不凑数量，不出现字词、病句或局部表达不通顺的批评。若没有可以确认的整体问题，直接写“暂无明确的整体性问题。”
+4. suggestions：围绕扣题、选材、立意、结构，选择最需要提升的2-3个方面给出具体可执行的建议，依据不足时可以少写。可采用“扣题：……”“选材：……”“立意：……”“结构：……”的分行形式，说明应突出哪个中心、充实哪类已有事件细节、如何安排详略或前后照应。不要采用“原句—修改—说明”的逐句改写格式，不纠正个别字词，不要求修改疑似识别噪声。
+5. rewriteExample：以原文中能够确认的事件和中心为依据，给出一个120-180字的细节展开、段落组织或点题示例；不引用疑似错文，不逐字纠错，不虚构新人物或新事件。可靠内容不足以支持示例时返回空字符串。
 6. scoreTotal：必须是数字，表示 0-50 的最终总分。
 7. scoreContent：必须是数字，范围 0-20。
 8. scoreStructure：必须是数字，范围 0-10。
@@ -122,8 +137,9 @@ ${input.topicText}`,
 - 不要返回数组，不要返回对象嵌套，不要补充其他字段。
 - 不要出现“作为AI”等表述。
 - 分数要符合真实阅卷手感：普通完整作文不要轻易打到 32 分以下，优秀作文不要轻易超过 42 分。
-- 如果作文明显未完成，分数应显著下调。
+- 只有可靠的整体内容足以确认作文未完成时，才相应降低评分；不能因局部漏字、断句或转写噪声认定未完成。
 - 四个子项分必须加起来等于 scoreTotal，并且能合理反映内容、结构、语言、立意的强弱差异。
+- 所有字段均须遵守系统中的 OCR 容错评阅规则；不能把识别噪声归为学生的写作错误，也不能在打印评语中说明识别过程。
 
 作文任务：${input.taskTitle}
 作文题目原文：${input.topicText ?? '未提供'}
@@ -135,14 +151,17 @@ ${topicGuidanceText || '未提供'}
 ${input.essayText}
 
 返回格式示例：
-{"summary":"...","strengths":"...","issues":"...","suggestions":"原句：... 修改：... 说明：...","rewriteExample":"...","scoreTotal":38,"scoreContent":15,"scoreStructure":8,"scoreLanguage":7,"scoreIdea":8}
+{"summary":"...","strengths":"...","issues":"...","suggestions":"扣题：……；选材：……；结构：……","rewriteExample":"...","scoreTotal":38,"scoreContent":15,"scoreStructure":8,"scoreLanguage":7,"scoreIdea":8}
 `,
       },
     ]);
 
     const parsed = this.parseJson(content);
     const wordCount = this.estimateWordCount(input.essayText);
-    const totalScore = this.normalizeHolisticScore(parsed.scoreTotal, wordCount);
+    const totalScore = this.normalizeHolisticScore(
+      parsed.scoreTotal,
+      wordCount,
+    );
     const dimensionScores = this.normalizeDimensionScores(totalScore, {
       content: parsed.scoreContent,
       structure: parsed.scoreStructure,
@@ -153,19 +172,26 @@ ${input.essayText}
     return {
       summary:
         this.pickString(parsed, ['summary', 'overall', 'comment']) ||
-        '文章整体完成了基本表达，但仍需进一步打磨中心表达、语言细节与结构层次。',
+        '暂未形成可靠的整体评价。',
       strengths:
         this.pickString(parsed, ['strengths', 'advantages', 'highlights']) ||
-        '文章有一定的生活素材基础，能围绕题意展开表达，个别细节描写也能体现真实感受。',
+        '暂未形成有充分依据的优点分析。',
       issues:
         this.pickString(parsed, ['issues', 'problems', 'weaknesses']) ||
-        '文章目前主要问题在于部分句子表达不够精炼，段落推进略显平直，个别位置的点题和升华还不够集中。',
+        '暂无充分依据指出整体性问题。',
       suggestions:
-        this.pickString(parsed, ['suggestions', 'revisionSuggestions', 'advice']) ||
-        '原句：这篇作文还有不少地方需要改。 修改：这篇作文在语言凝练和细节推进上还有进一步优化空间。 说明：把笼统表述改为更具体的修改方向。',
+        this.pickString(parsed, [
+          'suggestions',
+          'revisionSuggestions',
+          'advice',
+        ]) ||
+        '可从扣题、选材、立意和结构四个方面检查作文：明确回应题意，选择能支撑中心的事件，安排好段落详略，并让结尾与主题呼应。',
       rewriteExample:
-        this.pickString(parsed, ['rewriteExample', 'example', 'sampleRewrite']) ||
-        '我再次看向那张旧书桌时，忽然明白，人生并不是一路平坦地向前，而是在一次次磕碰中学会站稳脚步。那些坑洼与划痕，像极了成长留下的印记。正因为经历过磨损，它才更能托住新的日子；也正因为走过曲折，我才更懂得珍惜眼前，继续把人生认真续写下去。',
+        this.pickString(parsed, [
+          'rewriteExample',
+          'example',
+          'sampleRewrite',
+        ]) || '',
       scoring: {
         total: totalScore,
         content: dimensionScores.content,
@@ -176,43 +202,64 @@ ${input.essayText}
     };
   }
 
-  async cleanupOcrEssayText(input: { rawText: string }): Promise<EssayTextCleanupResult> {
+  async cleanupOcrEssayText(input: {
+    rawText: string;
+  }): Promise<EssayTextCleanupResult> {
     const rawText = input.rawText.trim();
     if (!rawText) {
-      return { title: '', body: '', fullText: '' };
+      return { studentName: '', title: '', body: '', fullText: '' };
     }
+    // Compact worksheet ruling without discarding header text or essay words.
+    const promptText = rawText
+      .replace(/[_＿]{2,}/g, ' ')
+      .replace(/[—-]{6,}/g, ' ')
+      .replace(/[ \t]{2,}/g, ' ');
 
     const content = await this.chat([
       {
         role: 'system',
         content:
-          '你是一名作文 OCR 文本整理助手。你只负责从 OCR 结果中提取作文标题和正文。必须只返回 JSON，不要输出 markdown，不要解释。',
+          '你只从完整作文 OCR 文本中提取页眉学生姓名、标题和正文，返回包含 studentName、title、body 的 JSON 对象。姓名只能取自页眉或姓名栏，不能从正文人物中推断作者。忠实保留正文原文，不改写、纠错或补写。',
       },
       {
         role: 'user',
-        content: `请整理下面的 OCR 文本，只返回作文标题和作文正文。
+        content: `请从下面的完整 OCR 文本中同时提取页眉学生姓名、作文标题和正文。
 
 处理规则：
-1. 删除班级、姓名、学号、作文纸名称、页眉页脚、字数标记、温度/编号、公式、空白格线等无关内容。
-2. 保留作文真实标题；如果没有明确标题，title 返回空字符串。
-3. 正文按自然段合并，修复明显被 OCR 拆开的换行，但不要改写作文内容，不要润色，不要补写。
-4. 如果有跨页或左右栏顺序混乱，请根据语义尽量拼接成通顺正文。
-5. 只返回字段 title、body，二者都必须是字符串，不要返回其他字段。
+1. 先从页眉或独立的姓名栏提取学生姓名到 studentName；允许合并姓名之间的排版空白，去除包裹姓名的 HTML 或 LaTex 排版标签。只保留 OCR 实际出现的姓名文字，不纠正姓名中的错认字，不补字、不猜测；找不到或存在多个无法确定的作者姓名时返回空字符串。正文中的人物姓名不能当成作者姓名。
+2. 正文中仅删除独立的姓名、班级、学号、日期、作文纸名称、页眉页脚、字数刻度及残留纸张模板符号；这些词若出现在正文句子中则保留。姓名和其他页眉信息不要混入 title、body。
+3. 明确的作文标题放入 title；不能确认时返回空字符串。
+4. 按原顺序保留正文的字词、标点和自然段。只合并同一段内由 OCR 造成的断行，不调整段落顺序，不猜测或修正错字，不概括或缩写正文。
+5. 只返回字符串字段 studentName、title、body，不要返回其他字段、markdown 或解释。
 
 OCR文本：
-${rawText}
+${promptText}
 
 返回示例：
-{"title":"我的未来不是梦","body":"……"}`,
+{"studentName":"","title":"我的未来不是梦","body":"……"}`,
       },
     ]);
 
     const parsed = this.parseJson(content);
-    const title = this.asString(parsed.title).replace(/^#+\s*/, '').trim();
+    const proposedName = this.asString(parsed.studentName).replace(/\s/g, '');
+    const nameSource = rawText
+      .replace(/<[^>]*>/g, '')
+      .replace(/\\(?:underline|text|mathrm|textbf)\s*\{/gu, '')
+      .replace(/[{}$\s_＿|*`]/g, '');
+    const studentName =
+      /^[\p{Script=Han}·]{2,6}$/u.test(proposedName) &&
+      !/年级|班级|姓名|学号|成绩|作文|活页|日期/u.test(proposedName) &&
+      nameSource.includes(proposedName)
+        ? proposedName
+        : '';
+    const title = this.asString(parsed.title)
+      .replace(/^#+\s*/, '')
+      .trim();
     const body = this.asString(parsed.body).trim();
     const fullText = [title, body].filter(Boolean).join('\n\n').trim();
 
     return {
+      studentName,
       title,
       body,
       fullText,
@@ -299,7 +346,9 @@ ${rawText}
   }
 
   private asRecord(value: unknown) {
-    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    return value && typeof value === 'object'
+      ? (value as Record<string, unknown>)
+      : {};
   }
 
   private asString(value: unknown) {
@@ -326,12 +375,7 @@ ${rawText}
     return '';
   }
 
-  private clampInt(
-    value: unknown,
-    min: number,
-    max: number,
-    fallback = min,
-  ) {
+  private clampInt(value: unknown, min: number, max: number, fallback = min) {
     const raw =
       typeof value === 'number'
         ? value
@@ -405,8 +449,7 @@ ${rawText}
       idea: this.clampInt(raw.idea, 0, maxMap.idea, fallback.idea),
     };
 
-    let current =
-      draft.content + draft.structure + draft.language + draft.idea;
+    let current = draft.content + draft.structure + draft.language + draft.idea;
 
     if (current < total) {
       let gap = total - current;
@@ -465,7 +508,10 @@ ${rawText}
     const content = Math.max(0, Math.min(20, Math.round(total * 0.4)));
     const structure = Math.max(0, Math.min(10, Math.round(total * 0.2)));
     const language = Math.max(0, Math.min(10, Math.round(total * 0.2)));
-    const idea = Math.max(0, Math.min(10, total - content - structure - language));
+    const idea = Math.max(
+      0,
+      Math.min(10, total - content - structure - language),
+    );
 
     return { content, structure, language, idea };
   }

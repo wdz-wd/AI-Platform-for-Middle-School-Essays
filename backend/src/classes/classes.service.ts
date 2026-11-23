@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -61,7 +62,8 @@ export class ClassesService {
     return classEntity;
   }
 
-  create(dto: CreateClassDto) {
+  async create(dto: CreateClassDto) {
+    await this.assertAssignableTeacher(dto.teacherId);
     return this.prisma.class.create({
       data: dto,
     });
@@ -69,10 +71,22 @@ export class ClassesService {
 
   async update(id: string, dto: UpdateClassDto) {
     await this.assertExists(id);
+    await this.assertAssignableTeacher(dto.teacherId);
     return this.prisma.class.update({
       where: { id },
       data: dto,
     });
+  }
+
+  private async assertAssignableTeacher(teacherId?: string | null) {
+    if (teacherId == null) return;
+    const teacher = await this.prisma.user.findUnique({
+      where: { id: teacherId, role: UserRole.TEACHER, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!teacher) {
+      throw new BadRequestException('请选择已启用的教师账号');
+    }
   }
 
   private async assertExists(id: string) {

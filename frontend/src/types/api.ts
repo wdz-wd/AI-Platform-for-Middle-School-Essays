@@ -5,7 +5,20 @@ export type User = {
   username: string
   displayName: string
   role: UserRole
+  mustChangePassword: boolean
 }
+
+export type TeacherAccount = User & {
+  status: string
+  classes: Pick<ClassItem, 'id' | 'name' | 'academicYear'>[]
+}
+
+export type TeacherCredentials = {
+  user: TeacherAccount
+  initialPassword: string
+}
+
+export type LoginSession = { accessToken: string; user: User }
 
 export type ClassItem = {
   id: string
@@ -146,6 +159,10 @@ export type SubmissionDetail = {
   id: string
   createdAt?: string
   detectedName?: string | null
+  ocrHeaderName?: string | null
+  ocrRetryCount?: number
+  ocrNextRetryAt?: string | null
+  ocrLastError?: string | null
   status: SubmissionStatus
   student?: StudentItem | null
   class?: {
@@ -196,6 +213,19 @@ export type SubmissionDetail = {
       status: SubmissionStatus
     }>
   }
+}
+
+export type StudentMatchCandidates = {
+  ocrName: string | null
+  candidates: Array<{
+    id: string
+    name: string
+    studentNo: string | null
+    classId: string
+    className: string
+    score: number
+    reason: string
+  }>
 }
 
 export type ArchiveItem = {

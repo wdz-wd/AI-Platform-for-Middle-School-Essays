@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../../api/client'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
+import { PageTitle } from '../../components/ui/page-title'
 import { Input } from '../../components/ui/input'
 import { useAuthStore } from '../../stores/auth-store'
-import type { ClassItem } from '../../types/api'
+import type { ClassItem, TeacherAccount } from '../../types/api'
 
 function toAcademicYear(startYear: string) {
   if (!startYear) return ''
@@ -15,9 +16,61 @@ function toAcademicYear(startYear: string) {
   return `${year}-${year + 1}`
 }
 
+function ClassTeacherField({ item, teachers }: { item: ClassItem; teachers?: TeacherAccount[] }) {
+  const queryClient = useQueryClient()
+  const currentTeacherId = item.teacher?.id ?? ''
+  const [selectedId, setSelectedId] = useState(currentTeacherId)
+  const activeTeachers = teachers?.filter((teacher) => teacher.status === 'ACTIVE') ?? []
+  const assign = useMutation({
+    mutationFn: () => apiFetch<ClassItem>(`/classes/${item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ teacherId: selectedId || null }),
+    }),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['classes'] }),
+      queryClient.invalidateQueries({ queryKey: ['teachers'] }),
+    ]),
+  })
+
+  return (
+    <div className="min-w-44 space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label={`${item.name}的负责老师`}
+          className="max-w-full rounded-lg border border-stone-200 bg-white px-2 py-2 text-sm"
+          value={selectedId}
+          disabled={!teachers || assign.isPending}
+          onChange={(event) => {
+            assign.reset()
+            setSelectedId(event.target.value)
+          }}
+        >
+          <option value="">未分配</option>
+          {item.teacher && !activeTeachers.some((teacher) => teacher.id === currentTeacherId) ? (
+            <option value={currentTeacherId} disabled>{item.teacher.displayName}</option>
+          ) : null}
+          {activeTeachers.map((teacher) => (
+            <option key={teacher.id} value={teacher.id}>{teacher.displayName}（{teacher.username}）</option>
+          ))}
+        </select>
+        {selectedId !== currentTeacherId ? (
+          <Button type="button" variant="secondary" disabled={assign.isPending} onClick={() => {
+            if (item.teacher && !window.confirm(
+              `确认调整 ${item.name} 的负责老师？历史作文任务仍归原创建人。`,
+            )) return
+            assign.mutate()
+          }}>{assign.isPending ? '保存中…' : '保存'}</Button>
+        ) : null}
+      </div>
+      {assign.error ? <p role="alert" className="text-xs text-rose-600">{assign.error.message}</p> : null}
+    </div>
+  )
+}
+
 export function ClassesPage() {
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
+  const isAdmin = user?.role === 'ADMIN'
   const [form, setForm] = useState({ name: '', grade: '', academicStartYear: '' })
   const [isYearPickerOpen, setIsYearPickerOpen] = useState(false)
   const [yearPageEnd, setYearPageEnd] = useState(() => new Date().getFullYear() + 1)
@@ -30,6 +83,11 @@ export function ClassesPage() {
   const classesQuery = useQuery({
     queryKey: ['classes'],
     queryFn: () => apiFetch<ClassItem[]>('/classes'),
+  })
+  const teachersQuery = useQuery({
+    queryKey: ['teachers'],
+    queryFn: () => apiFetch<TeacherAccount[]>('/teachers'),
+    enabled: isAdmin,
   })
 
   const createMutation = useMutation({
@@ -63,14 +121,9 @@ export function ClassesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-stone-400">
-          Class Management
-        </p>
-        <h1 className="mt-2 text-3xl font-black text-ink">班级管理</h1>
-      </div>
+      <PageTitle>班级管理</PageTitle>
 
-      {user?.role === 'ADMIN' ? (
+      {isAdmin ? (
         <Card className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_auto]">
           <Input
             placeholder="班级名称"
@@ -158,6 +211,9 @@ export function ClassesPage() {
         </Card>
       ) : null}
 
+      {teachersQuery.isError ? (
+        <p role="alert" className="text-sm text-rose-600">教师列表加载失败：{teachersQuery.error.message}</p>
+      ) : null}
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -166,6 +222,7 @@ export function ClassesPage() {
                 <th className="px-5 py-4 font-medium">班级名称</th>
                 <th className="px-5 py-4 font-medium">年级</th>
                 <th className="px-5 py-4 font-medium">学年</th>
+                <th className="px-5 py-4 font-medium">负责老师</th>
                 <th className="px-5 py-4 font-medium">学生数</th>
               </tr>
             </thead>
@@ -175,6 +232,15 @@ export function ClassesPage() {
                   <td className="px-5 py-4 font-medium text-ink">{item.name}</td>
                   <td className="px-5 py-4 text-stone-600">{item.grade ?? '-'}</td>
                   <td className="px-5 py-4 text-stone-600">{item.academicYear ?? '-'}</td>
+                  <td className="px-5 py-4 text-stone-600">
+                    {isAdmin ? (
+                      <ClassTeacherField
+                        key={item.teacher?.id ?? 'unassigned'}
+                        item={item}
+                        teachers={teachersQuery.data}
+                      />
+                    ) : (item.teacher?.displayName ?? '未分配')}
+                  </td>
                   <td className="px-5 py-4 text-stone-600">
                     {item._count?.students ?? 0}
                   </td>

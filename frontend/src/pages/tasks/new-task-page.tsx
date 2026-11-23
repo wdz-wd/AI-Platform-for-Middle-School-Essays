@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiFetch, uploadFetch } from '../../api/client'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
+import { PageTitle } from '../../components/ui/page-title'
 import { FilePicker } from '../../components/ui/file-picker'
 import { Input } from '../../components/ui/input'
 import { Textarea } from '../../components/ui/textarea'
@@ -70,12 +71,7 @@ export function NewTaskPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-stone-400">
-          Create Task
-        </p>
-        <h1 className="mt-2 text-3xl font-black text-ink">新建作文批改任务</h1>
-      </div>
+      <PageTitle>新建作文批改任务</PageTitle>
 
       <Card className="space-y-5">
         <div>

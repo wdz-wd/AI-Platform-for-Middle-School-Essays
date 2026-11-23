@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { apiFetch, uploadFetch } from '../../api/client'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
+import { PageTitle } from '../../components/ui/page-title'
 import { Input } from '../../components/ui/input'
 import { getCurrentAcademicYear, isCurrentAcademicYear } from '../../lib/academic-year'
 import type { ClassItem, StudentItem } from '../../types/api'
@@ -178,12 +179,7 @@ export function StudentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-stone-400">
-          Student Management
-        </p>
-        <h1 className="mt-2 text-3xl font-black text-ink">学生管理</h1>
-      </div>
+      <PageTitle>学生管理</PageTitle>
 
       <Card className="grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr_1fr_auto]">
         <select

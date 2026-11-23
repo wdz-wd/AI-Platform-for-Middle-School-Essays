@@ -31,6 +31,7 @@ import { apiFetch } from '../../api/client'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card } from '../../components/ui/card'
+import { PageTitle } from '../../components/ui/page-title'
 import { ChartContainer } from '../../components/ui/chart'
 import { Input } from '../../components/ui/input'
 import { getCurrentAcademicYear } from '../../lib/academic-year'
@@ -409,17 +410,7 @@ export function ArchivePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm uppercase tracking-[0.28em] text-stone-400">Archive</p>
-        <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-ink">作文档案</h1>
-            <p className="mt-2 text-sm text-stone-500">
-              汇总管理作文记录，支持按班级、学生与评分状态快速检索。
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageTitle>作文档案</PageTitle>
 
       <div className="grid gap-4 xl:grid-cols-6">
         {statCards.map((item) => {

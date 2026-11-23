@@ -28,6 +28,14 @@ export class SubmissionsController {
     return this.submissionsService.getById(id, currentUser);
   }
 
+  @Get(':id/student-candidates')
+  getStudentCandidates(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: CurrentUserType,
+  ) {
+    return this.submissionsService.getStudentCandidates(id, currentUser);
+  }
+
   @Patch(':id/student-binding')
   bindStudent(
     @Param('id') id: string,
@@ -54,11 +62,16 @@ export class SubmissionsController {
     return this.submissionsService.triggerReview(id, currentUser);
   }
 
-  @Delete(':id')
-  remove(
+  @Post(':id/ocr/retry')
+  retryOcr(
     @Param('id') id: string,
     @CurrentUser() currentUser: CurrentUserType,
   ) {
+    return this.submissionsService.retryOcr(id, currentUser);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() currentUser: CurrentUserType) {
     return this.submissionsService.remove(id, currentUser);
   }
 }

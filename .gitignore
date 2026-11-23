@@ -4,6 +4,7 @@ frontend/dist
 backend/node_modules
 backend/dist
 backend/coverage
+/outputs/
 backend/.env
 backend/作文管理平台key.txt
 .env

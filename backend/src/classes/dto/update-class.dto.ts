@@ -15,7 +15,7 @@ export class UpdateClassDto {
 
   @IsOptional()
   @IsString()
-  teacherId?: string;
+  teacherId?: string | null;
 
   @IsOptional()
   @IsString()
